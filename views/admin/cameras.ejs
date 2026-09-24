@@ -1,0 +1,178 @@
+<%- include("partials/head", { pageTitle: "Cameras · OF Wild & Walls" }) %>
+<div class="flex min-h-screen flex-col">
+  <%- include("partials/header", { flash: flash, primaryForm: "" }) %>
+
+  <div class="grid flex-1 items-stretch" style="grid-template-columns: 214px 1fr">
+    <%- include("partials/sidebar", { nav: nav, photos: photos, categories: categories, collections: collections, cameras: (typeof allCameras !== "undefined" ? allCameras : cameras) }) %>
+
+    <main class="min-w-0 px-7 pb-11 pt-6">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 class="m-0 mb-1 text-[21px] font-semibold tracking-tight">Cameras</h1>
+          <p class="m-0 text-[13px] text-mute">
+            <%= (typeof pagination !== "undefined" ? pagination.totalItems : cameras.length) %> cameras
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <form action="/admin/cameras" method="get" class="relative w-72">
+            <input type="search" name="search" value="<%= typeof search !== 'undefined' ? search : '' %>"
+                   placeholder="Search cameras..."
+                   class="w-full rounded-full border border-line2 bg-white py-2 pl-9 pr-4 text-xs text-ink placeholder:text-mute focus:border-amber focus:outline-none">
+            <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-mute">&#8981;</span>
+          </form>
+          <button type="button" data-open-modal="new-camera" class="pill-dark">Add camera</button>
+        </div>
+      </div>
+
+      <% if (typeof search !== "undefined" && search) { %>
+        <div class="mb-4 flex items-center justify-between rounded-xl border border-amber/30 bg-amber/10 px-4 py-2.5 text-xs font-medium text-amberink">
+          <span>🔍 Results for "<%= search %>" — <%= pagination ? pagination.totalItems : cameras.length %> match(es)</span>
+          <a href="/admin/cameras" class="underline hover:no-underline font-semibold">Clear search</a>
+        </div>
+      <% } %>
+
+      <%- include("partials/flash", { flash: flash }) %>
+
+      <% if (typeof error !== "undefined" && error) { %>
+        <div class="mb-4 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] font-medium text-red-700">
+          <span>⚠️ <%= error %></span>
+          <button type="button" onclick="this.parentElement.remove()" class="text-red-500 hover:text-red-800">&times;</button>
+        </div>
+      <% } %>
+
+      <div class="card overflow-hidden">
+        <table class="w-full table-fixed border-collapse text-[13px]" data-table="cameras">
+          <thead>
+            <tr class="bg-sand">
+              <th class="th w-[35%]"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="brand">Brand <span class="text-amber"></span></button></th>
+              <th class="th"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="model">Model <span class="text-amber"></span></button></th>
+              <th class="th w-[12%]"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="photos">Live <span class="text-amber"></span></button></th>
+              <th class="th w-[140px] text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (cameras.length === 0) { %>
+              <tr>
+                <td colspan="4" class="td text-center py-8 text-mute">No cameras found matching your criteria.</td>
+              </tr>
+            <% } %>
+            <% cameras.forEach(function (c, i) { %>
+              <% const count = photos.filter(p => Number(p.camera_id) === Number(c.id) || p.camera === (c.brand + ' ' + c.model) || p.camera === c.model).length; %>
+              <tr class="border-b border-[#f3ede4]"
+                  data-brand="<%= c.brand %>"
+                  data-model="<%= c.model %>"
+                  data-photos="<%= count %>">
+                <td class="td truncate font-semibold text-pine"><%= c.brand %></td>
+                <td class="td truncate font-medium"><%= c.model %></td>
+                <td class="td text-xs text-mute"><%= count %></td>
+                <td class="td">
+                  <div class="flex justify-end gap-1.5">
+                    <button type="button"
+                            onclick="openEditCameraModal(<%= c.id || i %>, '<%= (c.brand || '').replace(/'/g, "\\'") %>', '<%= (c.model || '').replace(/'/g, "\\'") %>')"
+                            class="rounded-full border border-line2 bg-white px-3 py-1.5 text-xs hover:bg-sand">
+                      Edit
+                    </button>
+                    <form method="post" action="/admin/cameras/<%= c.id || i %>/delete<%= typeof pagination !== 'undefined' ? '?page=' + pagination.currentPage : '' %><%= (typeof search !== 'undefined' && search) ? '&search=' + encodeURIComponent(search) : '' %>" data-confirm="Delete <%= c.brand %> <%= c.model %>?">
+                      <button type="submit" class="rounded-full border border-line2 bg-white px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 hover:border-red-200">Delete</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+
+        <!-- Pagination Footer -->
+        <% if (typeof pagination !== "undefined" && pagination.totalPages > 0) { %>
+          <% const searchParam = (typeof search !== "undefined" && search) ? "&search=" + encodeURIComponent(search) : ""; %>
+          <div class="flex items-center justify-between gap-4 border-t border-[#eee7dd] bg-sand px-4 py-3 text-xs text-mute">
+            <span id="footer-count">Showing <%= cameras.length %> of <%= pagination.totalItems %> cameras</span>
+            <div class="flex items-center gap-1.5">
+              <% if (pagination.prevPage) { %>
+                <a href="/admin/cameras?page=<%= pagination.prevPage %><%= searchParam %>" class="rounded-full border border-line2 bg-white px-3.5 py-1.5 text-xs text-ink hover:bg-sand transition font-medium">Prev</a>
+              <% } else { %>
+                <span class="rounded-full border border-line2/50 bg-white/50 px-3.5 py-1.5 text-xs text-mute/50 cursor-not-allowed">Prev</span>
+              <% } %>
+
+              <span class="px-2 font-medium">Page <%= pagination.currentPage %> of <%= pagination.totalPages %></span>
+
+              <% if (pagination.nextPage) { %>
+                <a href="/admin/cameras?page=<%= pagination.nextPage %><%= searchParam %>" class="rounded-full border border-line2 bg-white px-3.5 py-1.5 text-xs text-ink hover:bg-sand transition font-medium">Next</a>
+              <% } else { %>
+                <span class="rounded-full border border-line2/50 bg-white/50 px-3.5 py-1.5 text-xs text-mute/50 cursor-not-allowed">Next</span>
+              <% } %>
+            </div>
+          </div>
+        <% } %>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Modal: New Camera -->
+<div id="new-camera" class="fixed inset-0 z-40 hidden place-items-center bg-pine/50 p-6" data-modal>
+  <form method="post" action="/admin/cameras"
+        class="w-full max-w-[460px] overflow-hidden rounded-[20px] border border-line bg-cream shadow-2xl">
+    <div class="flex items-center justify-between gap-3 bg-pine px-5 py-4 text-cream">
+      <span class="text-[15px] font-semibold">New camera</span>
+      <button type="button" data-close-modal class="h-7 w-7 rounded-full border border-cream/25 text-sm leading-none text-cream">&times;</button>
+    </div>
+    <div class="grid gap-3.5 p-5">
+      <label class="label">Brand <span class="text-red-500">*</span>
+        <input class="field mt-1.5" name="brand" placeholder="Sony, Canon, Nikon, Fujifilm" required>
+      </label>
+      <label class="label">Model <span class="text-red-500">*</span>
+        <input class="field mt-1.5" name="model" placeholder="a7 IV, EOS R6, Z8, X-T5" required>
+      </label>
+      <div class="flex gap-2 pt-0.5">
+        <button class="rounded-full bg-amber px-4 py-2.5 text-[13px] font-semibold text-pine hover:bg-[#d79c4c]">Add camera</button>
+        <button type="button" data-close-modal class="pill-light">Cancel</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- Modal: Edit Camera -->
+<div id="edit-camera" class="fixed inset-0 z-40 hidden place-items-center bg-pine/50 p-6" data-modal>
+  <form id="edit-camera-form" method="post" action=""
+        class="w-full max-w-[460px] overflow-hidden rounded-[20px] border border-line bg-cream shadow-2xl">
+    <input type="hidden" name="page" value="<%= typeof pagination !== 'undefined' ? pagination.currentPage : 1 %>">
+    <input type="hidden" name="search" value="<%= typeof search !== 'undefined' ? search : '' %>">
+    <div class="flex items-center justify-between gap-3 bg-pine px-5 py-4 text-cream">
+      <span class="text-[15px] font-semibold">Edit camera</span>
+      <button type="button" data-close-modal class="h-7 w-7 rounded-full border border-cream/25 text-sm leading-none text-cream">&times;</button>
+    </div>
+    <div class="grid gap-3.5 p-5">
+      <label class="label">Brand <span class="text-red-500">*</span>
+        <input id="edit-camera-brand" class="field mt-1.5" name="brand" required>
+      </label>
+      <label class="label">Model <span class="text-red-500">*</span>
+        <input id="edit-camera-model" class="field mt-1.5" name="model" required>
+      </label>
+      <div class="flex gap-2 pt-0.5">
+        <button type="submit" class="rounded-full bg-amber px-4 py-2.5 text-[13px] font-semibold text-pine hover:bg-[#d79c4c]">Save changes</button>
+        <button type="button" data-close-modal class="pill-light">Cancel</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+  function openEditCameraModal(index, brand, model) {
+    const form = document.getElementById("edit-camera-form");
+    const brandInput = document.getElementById("edit-camera-brand");
+    const modelInput = document.getElementById("edit-camera-model");
+
+    if (form) form.action = "/admin/cameras/" + index;
+    if (brandInput) brandInput.value = brand;
+    if (modelInput) modelInput.value = model;
+
+    const modal = document.getElementById("edit-camera");
+    if (modal) {
+      modal.classList.remove("hidden");
+      modal.classList.add("grid");
+    }
+  }
+</script>
+
+<%- include("partials/footer") %>

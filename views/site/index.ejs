@@ -1,0 +1,428 @@
+
+<%# views/index.ejs — gallery page: Flow and Grid tabs on one page.
+    Both tabs are always rendered; app.js toggles between them purely in
+    the browser (no route, no reload, no second fetch) — Flow starts
+    visible, Grid starts hidden. %>
+
+<%- include('partials/head', { title: title }) %>
+
+<%- include('partials/header', { view: 'flow' }) %>
+
+<main>
+
+<section
+  id="flowView"
+  class="pt-[74px] pb-24"
+>
+
+<div id="flowCanvas" class="px-4 md:px-9 pt-6 pb-18 overflow-visible" data-offset="<%= typeof nextOffset !== 'undefined' ? nextOffset : photos.length %>" data-page-size="<%= typeof pageSize !== 'undefined' ? pageSize : photos.length %>" data-has-more="<%= typeof hasMore !== 'undefined' && hasMore ? '1' : '0' %>" >
+
+    <%# Rendered flat here for the first paint / no-JS fallback — app.js
+        picks these up and assigns each one a bento-grid size class
+        (see #flowCanvas's IIFE in app.js and .bento-grid/.s-* in
+        partials/head.ejs), which is what builds the dense mosaic. %>
+
+    <% photos.forEach(function (p, i) { %>
+<a
+  href="/photo/<%= p.slug %>"
+
+  class="photo-item group block overflow-visible shadow-sm hover:z-10 focus-visible:z-10"
+
+
+  data-index="<%= i %>"
+  data-slug="<%= p.slug %>"
+  data-category="<%= p.category %>"
+  data-collection="<%= p.collection %>"
+  data-camera="<%= p.camera %>"
+  data-lens="<%= p.lens %>"
+  data-country="<%= p.country %>"
+  data-state="<%= p.state %>"
+  data-year="<%= p.year %>"
+>
+
+  <!-- Photo + Hover Effects -->
+  <div class="relative h-full">
+
+    <!-- Cropped to the grid cell (object-cover) in its own overflow-hidden
+         wrapper — kept separate from .relative so the corner brackets below,
+         deliberately positioned a few px outside the image, aren't clipped. -->
+    <div class="absolute inset-0 rounded-lg overflow-hidden">
+      <img
+        src="<%= p.src %>"
+        alt="<%= p.alt %>"
+        loading="<%= i < 8 ? 'eager' : 'lazy' %>"
+        class="block w-full h-full object-cover select-none"
+      >
+    </div>
+
+    <!-- Cursor-following plus icon -->
+
+<span
+  aria-hidden="true"
+  class="photo-plus-cursor pointer-events-none absolute z-20 opacity-0 -translate-x-1/2 -translate-y-1/2"
+>
+  <span
+  class="relative w-[68px] h-[68px] grid place-items-center"
+>
+  <!-- lens/shadow + broken circle -->
+  <svg
+    class="absolute inset-0 w-full h-full"
+    viewBox="0 0 68 68"
+    fill="none"
+    aria-hidden="true"
+  >
+    <defs>
+      <!-- keeps the lens effect strictly inside the circle -->
+      <clipPath id="lensClip">
+        <circle
+          cx="34"
+          cy="34"
+          r="32"
+        />
+      </clipPath>
+
+      <!-- soft inner lens shadow -->
+      <filter
+        id="lensShadow"
+        x="-50%"
+        y="-50%"
+        width="200%"
+        height="200%"
+      >
+        <feGaussianBlur stdDeviation="3" />
+      </filter>
+    </defs>
+
+    <!-- lens effect -->
+    <g clip-path="url(#lensClip)">
+      <circle
+        cx="34"
+        cy="34"
+        r="32.5"
+        fill="rgba(255,255,255,0.055)"
+      />
+
+      <ellipse
+        cx="27"
+        cy="23"
+        rx="0"
+        ry="0"
+        fill="rgba(255,255,255,0.29)"
+        filter="url(#lensShadow)"
+        transform="rotate(-35 27 23)"
+      />
+
+      <!-- soft inner edge -->
+      <circle
+        cx="34"
+        cy="34"
+        r="30"
+        stroke="rgba(255,255,255,0.0)"
+        stroke-width="5"
+        filter="url(#lensShadow)"
+      />
+    </g>
+
+    <!-- broken circle -->
+
+   <!-- top -->
+<path
+  d="M 22 3.5 A 30.5 30.5 0 0 1 46 3.5"
+  stroke="rgba(255,255,255,0.75)"
+  stroke-width="1.2"
+  stroke-linecap="round"
+/>
+
+<!-- right -->
+<path
+  d="M 64.5 22 A 30.5 30.5 0 0 1 64.5 46"
+  stroke="rgba(255,255,255,0.75)"
+  stroke-width="1.2"
+  stroke-linecap="round"
+/>
+
+<!-- bottom -->
+<path
+  d="M 46 64.5 A 30.5 30.5 0 0 1 22 64.5"
+  stroke="rgba(255,255,255,0.75)"
+  stroke-width="1.2"
+  stroke-linecap="round"
+/>
+
+<!-- left -->
+<path
+  d="M 3.5 46 A 30.5 30.5 0 0 1 3.5 22"
+  stroke="rgba(255,255,255,0.75)"
+  stroke-width="1.2"
+  stroke-linecap="round"
+/>
+  </svg>
+
+  <!-- plus -->
+  <svg
+    class="relative w-[26px] h-[26px] text-white"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.4"
+    stroke-linecap="round"
+  >
+    <path d="M12 5v14M5 12h14"></path>
+  </svg>
+</span>
+</span>
+
+    <!-- Hover frame -->
+
+    <span
+      aria-hidden="true"
+      class="pointer-events-none absolute top-0 left-0 w-[44px] h-[48px] -translate-x-[9px] -translate-y-[9px] border-t-2 border-l-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+    ></span>
+
+    <span
+      aria-hidden="true"
+      class="pointer-events-none absolute top-0 right-0 w-[44px] h-[48px] translate-x-[9px] -translate-y-[9px] border-t-2 border-r-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+    ></span>
+
+    <span
+      aria-hidden="true"
+      class="pointer-events-none absolute bottom-0 left-0 w-[44px] h-[48px] -translate-x-[9px] translate-y-[9px] border-b-2 border-l-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+    ></span>
+
+    <span
+      aria-hidden="true"
+      class="pointer-events-none absolute bottom-0 right-0 w-[44px] h-[48px] translate-x-[9px] translate-y-[9px] border-b-2 border-r-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+    ></span>
+
+  </div>
+
+  <!-- Caption -->
+
+<span
+  class="pointer-events-none block h-0 mt-2.5 text-center whitespace-nowrap font-tight text-[14px] font-medium leading-none tracking-[-0.01em] text-ink dark:text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+>
+  <%= p.cap %>
+</span>
+
+</a>
+
+    <% }); %>
+
+</div>
+
+  <div
+    id="flowSentinel"
+    class="h-px w-full"
+    aria-hidden="true"
+  ></div>
+
+</section>
+
+<section
+  id="gridView"
+  class="h-screen w-full flex items-center justify-center overflow-hidden py-12 hidden"
+>
+
+  <div
+    id="gridStrip"
+   class="w-full h-full overflow-x-auto no-bar flex justify-start"
+    data-offset="<%= typeof nextOffset !== 'undefined' ? nextOffset : photos.length %>"
+    data-page-size="<%= typeof pageSize !== 'undefined' ? pageSize : photos.length %>"
+    data-has-more="<%= typeof hasMore !== 'undefined' && hasMore ? '1' : '0' %>"
+  >
+
+    <div
+      id="gridTrack"
+      class="flex items-center justify-center gap-[14px] px-[1.5vw] my-auto min-w-max pt-[10px] pb-14 overflow-visible"
+    >
+
+      <%# pb-14 reserves room below the row for the hover caption (top-[calc(100%+18px)]
+          on each .photo-item). #gridStrip has overflow-x-auto, which per the CSS Overflow
+          spec forces its overflow-y to auto too — without this padding the caption sits
+          outside the row's natural content height and gets scrolled out of view instead
+          of ever being visible on hover. %>
+
+      <div class="grid-copy flex items-center gap-[14px]">
+
+        <% photos.forEach(function (p) { %>
+
+          <a
+            href="/photo/<%= p.slug %>"
+            class="photo-item group relative inline-block shrink-0 overflow-visible h-[43.3vh] max-h-[calc(100vh-460px)] align-top"
+            data-category="<%= p.category %>"
+            data-collection="<%= p.collection %>"
+            data-camera="<%= p.camera %>"
+            data-lens="<%= p.lens %>"
+            data-country="<%= p.country %>"
+            data-state="<%= p.state %>"
+            data-year="<%= p.year %>"
+          >
+
+            <img
+              src="<%= p.src %>"
+              alt="<%= p.alt %>"
+              class="h-full w-auto object-cover select-none"
+            >
+
+         <!-- Cursor-following plus icon -->
+<span
+  aria-hidden="true"
+  class="photo-plus-cursor pointer-events-none absolute z-20 opacity-0 -translate-x-1/2 -translate-y-1/2"
+>
+  <span
+  class="relative w-[68px] h-[68px] grid place-items-center"
+>
+  <!-- lens/shadow + broken circle -->
+  <svg
+    class="absolute inset-0 w-full h-full"
+    viewBox="0 0 68 68"
+    fill="none"
+    aria-hidden="true"
+  >
+    <defs>
+      <!-- keeps the lens effect strictly inside the circle -->
+      <clipPath id="lensClip">
+        <circle
+          cx="34"
+          cy="34"
+          r="32"
+        />
+      </clipPath>
+
+      <!-- soft inner lens shadow -->
+      <filter
+        id="lensShadow"
+        x="-50%"
+        y="-50%"
+        width="200%"
+        height="200%"
+      >
+        <feGaussianBlur stdDeviation="3" />
+      </filter>
+    </defs>
+
+    <!-- lens effect -->
+    <g clip-path="url(#lensClip)">
+      <circle
+        cx="34"
+        cy="34"
+        r="32.5"
+        fill="rgba(255,255,255,0.055)"
+      />
+
+      <ellipse
+        cx="27"
+        cy="23"
+        rx="0"
+        ry="0"
+        fill="rgba(255,255,255,0.29)"
+        filter="url(#lensShadow)"
+        transform="rotate(-35 27 23)"
+      />
+
+      <!-- soft inner edge -->
+      <circle
+        cx="34"
+        cy="34"
+        r="30"
+        stroke="rgba(255,255,255,0.0)"
+        stroke-width="5"
+        filter="url(#lensShadow)"
+      />
+    </g>
+
+    <!-- broken circle -->
+
+   <!-- top -->
+<path
+  d="M 22 3.5 A 30.5 30.5 0 0 1 46 3.5"
+  stroke="rgba(255,255,255,0.75)"
+  stroke-width="1.2"
+  stroke-linecap="round"
+/>
+
+<!-- right -->
+<path
+  d="M 64.5 22 A 30.5 30.5 0 0 1 64.5 46"
+  stroke="rgba(255,255,255,0.75)"
+  stroke-width="1.2"
+  stroke-linecap="round"
+/>
+
+<!-- bottom -->
+<path
+  d="M 46 64.5 A 30.5 30.5 0 0 1 22 64.5"
+  stroke="rgba(255,255,255,0.75)"
+  stroke-width="1.2"
+  stroke-linecap="round"
+/>
+
+<!-- left -->
+<path
+  d="M 3.5 46 A 30.5 30.5 0 0 1 3.5 22"
+  stroke="rgba(255,255,255,0.75)"
+  stroke-width="1.2"
+  stroke-linecap="round"
+/>
+  </svg>
+
+  <!-- plus -->
+  <svg
+    class="relative w-[26px] h-[26px] text-white"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.4"
+    stroke-linecap="round"
+  >
+    <path d="M12 5v14M5 12h14"></path>
+  </svg>
+</span>
+</span>
+
+
+            <!-- Hover frame -->
+
+            <span
+              aria-hidden="true"
+              class="pointer-events-none absolute top-0 left-0 w-[44px] h-[48px] -translate-x-[9px] -translate-y-[9px] border-t-2 border-l-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+            ></span>
+
+            <span
+              aria-hidden="true"
+              class="pointer-events-none absolute top-0 right-0 w-[44px] h-[48px] translate-x-[9px] -translate-y-[9px] border-t-2 border-r-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+            ></span>
+
+            <span
+              aria-hidden="true"
+              class="pointer-events-none absolute bottom-0 left-0 w-[44px] h-[48px] -translate-x-[9px] translate-y-[9px] border-b-2 border-l-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+            ></span>
+
+            <span
+              aria-hidden="true"
+              class="pointer-events-none absolute bottom-0 right-0 w-[44px] h-[48px] translate-x-[9px] translate-y-[9px] border-b-2 border-r-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+            ></span>
+
+            <!-- Caption -->
+
+            <span
+              class="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 whitespace-nowrap font-tight text-[14px] font-medium leading-none tracking-[-0.01em] text-center text-ink dark:text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+            >
+              <%= p.cap %>
+            </span>
+
+          </a>
+
+        <% }); %>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</section>
+
+</main>
+
+<%- include('partials/footer', { cameras: cameras, cameraOpen: false }) %>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Login | Of Wild & Walls</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        mute: "#77736c",
+                        ink: "#24231f",
+                        paper: "#f4f1eb"
+                    }
+                }
+            }
+        };
+    </script>
+</head>
+
+<body class="min-h-screen bg-paper text-ink">
+
+    <main class="flex min-h-screen items-center justify-center px-5 py-10">
+
+        <section class="w-full max-w-md border border-[#dedad2] bg-white p-8 sm:p-10">
+
+            <!-- Header -->
+            <div class="mb-8">
+
+                <p class="mb-3 text-[12px] font-semibold tracking-[2px]">
+                    OF WILD & WALLS
+                </p>
+
+                <h1 class="m-0 text-[30px] font-semibold tracking-tight">
+                    Login
+                </h1>
+
+                <p class="mt-2 text-[14px] text-mute">
+                    Sign in to access the admin panel.
+                </p>
+
+            </div>
+
+
+            <!-- Error Message -->
+            <% if (typeof error !=="undefined" && error) { %>
+
+                <div class="mb-5 border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
+                    <%= error %>
+                </div>
+
+                <% } %>
+
+
+                    <!-- Login Form -->
+                    <form action="/admin/log-in" method="POST" class="flex flex-col gap-5">
+
+                        <!-- Email -->
+                        <div class="flex flex-col gap-2">
+
+                            <label for="email" class="text-[13px] font-semibold">
+                                Email
+                            </label>
+
+                            <input type="email" id="email" name="email" placeholder="Enter your email"
+                                autocomplete="email" required
+                                class="w-full border border-[#d5d1c8] bg-[#faf9f6] px-3.5 py-3 text-[14px] outline-none transition focus:border-ink focus:bg-white">
+
+                        </div>
+
+
+                        <!-- Password -->
+                        <div class="flex flex-col gap-2">
+
+                            <label for="password" class="text-[13px] font-semibold">
+                                Password
+                            </label>
+
+                            <input type="password" id="password" name="password" placeholder="Enter your password"
+                                autocomplete="current-password" required
+                                class="w-full border border-[#d5d1c8] bg-[#faf9f6] px-3.5 py-3 text-[14px] outline-none transition focus:border-ink focus:bg-white">
+
+                        </div>
+
+
+                        <!-- Submit -->
+                        <div class="mt-2">
+
+                            <button type="submit"
+                                class="w-full bg-ink px-4 py-3.5 text-[14px] font-semibold text-white transition hover:opacity-90">
+                                Login
+                            </button>
+
+                        </div>
+
+                    </form>
+
+
+                    <!-- Footer -->
+                    <div class="mt-7 text-center">
+                    </div>
+
+        </section>
+
+    </main>
+
+</body>
+
+</html>
+```

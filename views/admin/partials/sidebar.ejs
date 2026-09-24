@@ -1,0 +1,58 @@
+<%
+  const groups = [
+    {
+      title: "Content",
+      items: [
+        { key: "photos", label: "Photos", href: "/admin/photos", icon: "photos" },
+        { key: "add", label: "Add photo", href: "/admin/photos/new", icon: "add" },
+      ]
+    },
+    {
+      title: "Library",
+      items: [
+        { key: "categories", label: "Categories", href: "/admin/categories", icon: "categories" },
+        { key: "collections", label: "Collections", href: "/admin/collections", icon: "collections" },
+        { key: "cameras", label: "Cameras", href: "/admin/cameras", icon: "cameras" },
+        { key: "lenses", label: "Lenses", href: "/admin/lenses", icon: "lenses" },
+        { key: "countries", label: "Countries", href: "/admin/countries", icon: "countries" },
+      ]
+    }
+  ];
+
+  const icons = {
+    photos: '<rect x="3" y="4.5" width="14" height="11" rx="2"/><circle cx="7.4" cy="8.6" r="1.15"/><path d="m4 14.2 3.6-3.5a1.3 1.3 0 0 1 1.8 0l1.3 1.3M11.8 12.8l1.3-1.3a1.3 1.3 0 0 1 1.8 0l1.1 1.1"/>',
+    add: '<circle cx="10" cy="10" r="7"/><path d="M10 7v6M7 10h6"/>',
+    categories: '<rect x="3" y="3" width="6" height="6" rx="1.3"/><rect x="11" y="3" width="6" height="6" rx="1.3"/><rect x="3" y="11" width="6" height="6" rx="1.3"/><rect x="11" y="11" width="6" height="6" rx="1.3"/>',
+    collections: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h3.4l1.3 1.6h6.3A1.5 1.5 0 0 1 17 8.1v6.4A1.5 1.5 0 0 1 15.5 16h-11A1.5 1.5 0 0 1 3 14.5v-8Z"/>',
+    cameras: '<path d="M3 8a2 2 0 0 1 2-2h1.4l.9-1.5h5.4L13.6 6H15a2 2 0 0 1 2 2v5.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8Z"/><circle cx="10" cy="10.5" r="2.5"/>',
+    lenses: '<circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2.9"/><path d="M10 3v2.3M17 10h-2.3M10 17v-2.3M3 10h2.3"/>',
+    countries: '<circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c2.2 2 2.2 12 0 14M10 3c-2.2 2-2.2 12 0 14"/>'
+  };
+%>
+<nav class="flex h-full flex-col bg-pine2 px-3.5 py-5">
+  <div class="flex-1 space-y-5 overflow-y-auto">
+    <% groups.forEach(function (group) { %>
+      <div>
+        <p class="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-cream/35"><%= group.title %></p>
+        <div class="space-y-0.5">
+          <% group.items.forEach(function (it) { const on = nav === it.key; %>
+            <a href="<%= it.href %>"
+              class="group relative flex items-center gap-2.5 rounded-lg py-2 pl-3 pr-2.5 text-[13px] transition-colors <%= on ? "bg-amber/[0.12] font-semibold text-amber" : "text-cream/65 hover:bg-cream/[0.06] hover:text-cream" %>">
+              <span class="absolute inset-y-1 left-0 w-[3px] rounded-full bg-amber transition-opacity <%= on ? "opacity-100" : "opacity-0" %>"></span>
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 flex-none <%= on ? "text-amber" : "text-cream/40 group-hover:text-cream/70" %>"><%- icons[it.icon] %></svg>
+              <span class="truncate"><%= it.label %></span>
+            </a>
+          <% }); %>
+        </div>
+      </div>
+    <% }); %>
+  </div>
+
+  <!-- Logout -->
+  <form action="/admin/logout" method="POST" class="mt-4 border-t border-cream/10 pt-4">
+    <button type="submit"
+      class="w-full rounded-lg border border-amber/40 px-3.5 py-2.5 text-left text-[13px] font-semibold text-amber transition hover:bg-amber hover:text-pine">
+      Logout
+    </button>
+  </form>
+</nav>

@@ -1,0 +1,128 @@
+<%- include("partials/head", { pageTitle: "Photos · OF Wild & Walls" }) %>
+<div class="flex min-h-screen flex-col">
+  <%- include("partials/header", { flash: flash, primaryForm: "" }) %>
+
+  <div class="grid flex-1 items-stretch" style="grid-template-columns: 214px 1fr">
+    <%- include("partials/sidebar", { nav: nav, photos: (typeof allPhotos !== "undefined" ? allPhotos : photos), categories: categories }) %>
+
+    <main class="min-w-0 px-7 pb-11 pt-6">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 class="m-0 mb-1 text-[21px] font-semibold tracking-tight">Photos</h1>
+          <p class="m-0 text-[13px] text-mute">
+            <span id="row-count"><%= typeof pagination !== "undefined" ? pagination.totalItems : photos.length %></span> photos ·
+            <%= (typeof allPhotos !== "undefined" ? allPhotos : photos).filter(p => p.live).length %> live
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <form action="/admin/photos" method="get" class="relative w-72">
+            <input type="search" name="search" value="<%= typeof search !== 'undefined' ? search : '' %>"
+                   placeholder="Search photos, captions, cameras..."
+                   class="w-full rounded-full border border-line2 bg-white py-2 pl-9 pr-4 text-xs text-ink placeholder:text-mute focus:border-amber focus:outline-none">
+            <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-mute">&#8981;</span>
+          </form>
+          <a href="/admin/photos/new" class="pill-dark">Add photo</a>
+        </div>
+      </div>
+
+      <% if (typeof search !== "undefined" && search) { %>
+        <div class="mb-4 flex items-center justify-between rounded-xl border border-amber/30 bg-amber/10 px-4 py-2.5 text-xs font-medium text-amberink">
+          <span>🔍 Results for "<%= search %>" — <%= pagination ? pagination.totalItems : photos.length %> match(es)</span>
+          <a href="/admin/photos" class="underline hover:no-underline font-semibold">Clear search</a>
+        </div>
+      <% } %>
+
+      <%- include("partials/flash", { flash: flash }) %>
+
+      <% if (typeof error !== "undefined" && error) { %>
+        <div class="mb-4 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] font-medium text-red-700">
+          <span>⚠️ <%= error %></span>
+          <button type="button" onclick="this.parentElement.remove()" class="text-red-500 hover:text-red-800">&times;</button>
+        </div>
+      <% } %>
+
+      <div class="card overflow-hidden">
+        <table class="w-full table-fixed border-collapse text-[13px]" data-table="photos">
+          <thead>
+            <tr class="bg-sand">
+              <th class="th w-[74px]">Photo</th>
+              <th class="th w-[17%]"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="cap">Caption <span class="text-amber"></span></button></th>
+              <th class="th w-[12%]"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="slug">Slug <span class="text-amber"></span></button></th>
+              <th class="th w-[11%]"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="category">Category <span class="text-amber"></span></button></th>
+              <th class="th w-[14%]"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="collection">Collection <span class="text-amber"></span></button></th>
+              <th class="th w-[12%]"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="camera">Camera <span class="text-amber"></span></button></th>
+              <th class="th w-[10%]"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="date">Date <span class="text-amber"></span></button></th>
+              <th class="th w-[9%]"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="live">Live <span class="text-amber"></span></button></th>
+              <th class="th w-[122px] text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (photos.length === 0) { %>
+              <tr>
+                <td colspan="9" class="td text-center py-8 text-mute">No photos found matching your criteria.</td>
+              </tr>
+            <% } %>
+            <% photos.forEach(function (p) { %>
+              <% const rowReturn = "?page=" + (typeof pagination !== "undefined" ? pagination.currentPage : 1) + (typeof search !== "undefined" && search ? "&search=" + encodeURIComponent(search) : ""); %>
+              <tr class="border-b border-[#f3ede4]"
+                  data-cap="<%= p.cap %>" data-slug="<%= p.slug %>" data-category="<%= p.category %>"
+                  data-collection="<%= p.collection %>" data-camera="<%= p.camera %>" data-date="<%= p.date %>"
+                  data-live="<%= p.live ? 1 : 0 %>">
+                <td class="td">
+                  <div class="h-[34px] w-[46px] overflow-hidden rounded-[10px] bg-[#e6e0d7]">
+                    <img src="<%= p.src %>" alt="<%= p.alt %>" class="block h-full w-full object-cover">
+                  </div>
+                </td>
+                <td class="td truncate font-medium"><%= p.cap %></td>
+                <td class="td truncate text-xs text-mute">/<%= p.slug %></td>
+                <td class="td truncate text-xs"><%= p.category || "-" %></td>
+                <td class="td truncate text-xs"><%= p.collection || "-" %></td>
+                <td class="td truncate text-xs text-mute"><%= p.camera || "-" %></td>
+                <td class="td whitespace-nowrap text-xs text-mute"><%= p.date || "-" %></td>
+                <td class="td">
+                  <form method="post" action="/admin/photos/<%= p.slug %>/toggle<%= rowReturn %>">
+                    <button class="rounded-full px-3 py-1 text-[11px] uppercase tracking-wider <%= p.live ? 'border border-pine bg-pine text-cream' : 'border border-line2 bg-white text-mute' %>">
+                      <%= p.live ? "Live" : "Draft" %>
+                    </button>
+                  </form>
+                </td>
+                <td class="td">
+                  <div class="flex justify-end gap-1.5">
+                    <a href="/admin/photos/<%= p.slug %>/edit<%= rowReturn %>" class="rounded-full border border-line2 bg-white px-3 py-1.5 text-xs hover:bg-sand">Edit</a>
+                    <form method="post" action="/admin/photos/<%= p.slug %>/delete<%= rowReturn %>" data-confirm="Delete <%= p.cap %>?">
+                      <button type="submit" class="rounded-full border border-line2 bg-white px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 hover:border-red-200">Delete</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+
+        <!-- Pagination Footer -->
+        <% if (typeof pagination !== "undefined" && pagination.totalPages > 0) { %>
+          <% const searchParam = (typeof search !== "undefined" && search) ? "&search=" + encodeURIComponent(search) : ""; %>
+          <div class="flex items-center justify-between gap-4 border-t border-[#eee7dd] bg-sand px-4 py-3 text-xs text-mute">
+            <span id="footer-count">Showing <%= photos.length %> of <%= pagination.totalItems %> photos</span>
+            <div class="flex items-center gap-1.5">
+              <% if (pagination.prevPage) { %>
+                <a href="/admin/photos?page=<%= pagination.prevPage %><%= searchParam %>" class="rounded-full border border-line2 bg-white px-3.5 py-1.5 text-xs text-ink hover:bg-sand transition font-medium">Prev</a>
+              <% } else { %>
+                <span class="rounded-full border border-line2/50 bg-white/50 px-3.5 py-1.5 text-xs text-mute/50 cursor-not-allowed">Prev</span>
+              <% } %>
+
+              <span class="px-2 font-medium">Page <%= pagination.currentPage %> of <%= pagination.totalPages %></span>
+
+              <% if (pagination.nextPage) { %>
+                <a href="/admin/photos?page=<%= pagination.nextPage %><%= searchParam %>" class="rounded-full border border-line2 bg-white px-3.5 py-1.5 text-xs text-ink hover:bg-sand transition font-medium">Next</a>
+              <% } else { %>
+                <span class="rounded-full border border-line2/50 bg-white/50 px-3.5 py-1.5 text-xs text-mute/50 cursor-not-allowed">Next</span>
+              <% } %>
+            </div>
+          </div>
+        <% } %>
+      </div>
+    </main>
+  </div>
+</div>
+<%- include("partials/footer") %>

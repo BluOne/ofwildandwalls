@@ -1,0 +1,196 @@
+<%- include("partials/head", { pageTitle: "Categories · OF Wild & Walls" }) %>
+<div class="flex min-h-screen flex-col">
+  <%- include("partials/header", { flash: flash, primaryForm: "" }) %>
+
+  <div class="grid flex-1 items-stretch" style="grid-template-columns: 214px 1fr">
+    <%- include("partials/sidebar", { nav: nav, photos: photos, categories: (typeof allCategories !== "undefined" ? allCategories : categories) }) %>
+
+    <main class="min-w-0 px-7 pb-11 pt-6">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 class="m-0 mb-1 text-[21px] font-semibold tracking-tight">Categories</h1>
+          <p class="m-0 text-[13px] text-mute">
+            <%= (typeof pagination !== "undefined" ? pagination.totalItems : categories.length) %> categories · <%= (typeof allCategories !== "undefined" ? allCategories : categories).filter(c => c.parent === "None").length %> top level
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <form action="/admin/categories" method="get" class="relative w-72">
+            <input type="search" name="search" value="<%= typeof search !== 'undefined' ? search : '' %>"
+                   placeholder="Search categories..."
+                   class="w-full rounded-full border border-line2 bg-white py-2 pl-9 pr-4 text-xs text-ink placeholder:text-mute focus:border-amber focus:outline-none">
+            <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-mute">&#8981;</span>
+          </form>
+          <button type="button" data-open-modal="new-category" class="pill-dark">Add category</button>
+        </div>
+      </div>
+
+      <% if (typeof search !== "undefined" && search) { %>
+        <div class="mb-4 flex items-center justify-between rounded-xl border border-amber/30 bg-amber/10 px-4 py-2.5 text-xs font-medium text-amberink">
+          <span>🔍 Results for "<%= search %>" — <%= pagination ? pagination.totalItems : categories.length %> match(es)</span>
+          <a href="/admin/categories" class="underline hover:no-underline font-semibold">Clear search</a>
+        </div>
+      <% } %>
+
+      <%- include("partials/flash", { flash: flash }) %>
+
+      <% if (typeof error !== "undefined" && error) { %>
+        <div class="mb-4 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] font-medium text-red-700">
+          <span>⚠️ <%= error %></span>
+          <button type="button" onclick="this.parentElement.remove()" class="text-red-500 hover:text-red-800">&times;</button>
+        </div>
+      <% } %>
+
+      <div class="card overflow-hidden">
+        <table class="w-full table-fixed border-collapse text-[13px]" data-table="categories">
+          <thead>
+            <tr class="bg-sand">
+              <th class="th"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="title">Title <span class="text-amber"></span></button></th>
+              <th class="th w-[26%]"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="parent">Parent <span class="text-amber"></span></button></th>
+              <th class="th w-[15%]"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="photos">Live <span class="text-amber"></span></button></th>
+              <th class="th w-[140px] text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (categories.length === 0) { %>
+              <tr>
+                <td colspan="4" class="td text-center py-8 text-mute">No categories found matching your criteria.</td>
+              </tr>
+            <% } %>
+            <% categories.forEach(function (c, i) { %>
+              <% const count = photos.filter(p => Number(p.category_id) === Number(c.id) || p.category === c.title).length; %>
+              <tr class="border-b border-[#f3ede4]"
+                  data-title="<%= c.title %>"
+                  data-parent="<%= c.parent %>"
+                  data-photos="<%= count %>">
+                <td class="td truncate font-medium"><%= c.title %></td>
+                <td class="td truncate text-xs text-mute"><%= c.parent %></td>
+                <td class="td text-xs text-mute"><%= count %></td>
+                <td class="td">
+                  <div class="flex justify-end gap-1.5">
+                    <button type="button"
+                            onclick="openEditCategoryModal(<%= c.id || i %>, '<%= c.title.replace(/'/g, "\\'") %>', '<%= c.parent.replace(/'/g, "\\'") %>', '<%= (c.description || '').replace(/'/g, "\\'").replace(/\n/g, "\\n") %>')"
+                            class="rounded-full border border-line2 bg-white px-3 py-1.5 text-xs hover:bg-sand">
+                      Edit
+                    </button>
+                    <form method="post" action="/admin/categories/<%= c.id || i %>/delete<%= typeof pagination !== 'undefined' ? '?page=' + pagination.currentPage : '' %><%= (typeof search !== 'undefined' && search) ? '&search=' + encodeURIComponent(search) : '' %>" data-confirm="Delete <%= c.title %>?">
+                      <button type="submit" class="rounded-full border border-line2 bg-white px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 hover:border-red-200">Delete</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+
+        <!-- Pagination Footer -->
+        <% if (typeof pagination !== "undefined" && pagination.totalPages > 0) { %>
+          <% const searchParam = (typeof search !== "undefined" && search) ? "&search=" + encodeURIComponent(search) : ""; %>
+          <div class="flex items-center justify-between gap-4 border-t border-[#eee7dd] bg-sand px-4 py-3 text-xs text-mute">
+            <span id="footer-count">Showing <%= categories.length %> of <%= pagination.totalItems %> categories</span>
+            <div class="flex items-center gap-1.5">
+              <% if (pagination.prevPage) { %>
+                <a href="/admin/categories?page=<%= pagination.prevPage %><%= searchParam %>" class="rounded-full border border-line2 bg-white px-3.5 py-1.5 text-xs text-ink hover:bg-sand transition font-medium">Prev</a>
+              <% } else { %>
+                <span class="rounded-full border border-line2/50 bg-white/50 px-3.5 py-1.5 text-xs text-mute/50 cursor-not-allowed">Prev</span>
+              <% } %>
+
+              <span class="px-2 font-medium">Page <%= pagination.currentPage %> of <%= pagination.totalPages %></span>
+
+              <% if (pagination.nextPage) { %>
+                <a href="/admin/categories?page=<%= pagination.nextPage %><%= searchParam %>" class="rounded-full border border-line2 bg-white px-3.5 py-1.5 text-xs text-ink hover:bg-sand transition font-medium">Next</a>
+              <% } else { %>
+                <span class="rounded-full border border-line2/50 bg-white/50 px-3.5 py-1.5 text-xs text-mute/50 cursor-not-allowed">Next</span>
+              <% } %>
+            </div>
+          </div>
+        <% } %>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Modal: New Category -->
+<div id="new-category" class="fixed inset-0 z-40 hidden place-items-center bg-pine/50 p-6" data-modal>
+  <form method="post" action="/admin/categories"
+        class="w-full max-w-[460px] overflow-hidden rounded-[20px] border border-line bg-cream shadow-2xl">
+    <div class="flex items-center justify-between gap-3 bg-pine px-5 py-4 text-cream">
+      <span class="text-[15px] font-semibold">New category</span>
+      <button type="button" data-close-modal class="h-7 w-7 rounded-full border border-cream/25 text-sm leading-none text-cream">&times;</button>
+    </div>
+    <div class="grid gap-3.5 p-5">
+      <label class="label">Category title <span class="text-red-500">*</span>
+        <input class="field mt-1.5" name="title" placeholder="Wetlands" required>
+      </label>
+      <label class="label">Parent category
+        <select class="field mt-1.5" name="parent">
+          <option value="None">None</option>
+          <% (typeof allCategories !== "undefined" ? allCategories : categories).forEach(function (c) { %>
+            <option value="<%= c.title %>"><%= c.title %></option>
+          <% }); %>
+        </select>
+      </label>
+      <label class="label">Description
+        <textarea class="field mt-1.5 resize-y" name="description" rows="3" placeholder="Shown under the category in the menu."></textarea>
+      </label>
+      <div class="flex gap-2 pt-0.5">
+        <button class="rounded-full bg-amber px-4 py-2.5 text-[13px] font-semibold text-pine hover:bg-[#d79c4c]">Create category</button>
+        <button type="button" data-close-modal class="pill-light">Cancel</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- Modal: Edit Category -->
+<div id="edit-category" class="fixed inset-0 z-40 hidden place-items-center bg-pine/50 p-6" data-modal>
+  <form id="edit-category-form" method="post" action=""
+        class="w-full max-w-[460px] overflow-hidden rounded-[20px] border border-line bg-cream shadow-2xl">
+    <input type="hidden" name="page" value="<%= typeof pagination !== 'undefined' ? pagination.currentPage : 1 %>">
+    <input type="hidden" name="search" value="<%= typeof search !== 'undefined' ? search : '' %>">
+    <div class="flex items-center justify-between gap-3 bg-pine px-5 py-4 text-cream">
+      <span class="text-[15px] font-semibold">Edit category</span>
+      <button type="button" data-close-modal class="h-7 w-7 rounded-full border border-cream/25 text-sm leading-none text-cream">&times;</button>
+    </div>
+    <div class="grid gap-3.5 p-5">
+      <label class="label">Category title <span class="text-red-500">*</span>
+        <input id="edit-category-title" class="field mt-1.5" name="title" required>
+      </label>
+      <label class="label">Parent category
+        <select id="edit-category-parent" class="field mt-1.5" name="parent">
+          <option value="None">None</option>
+          <% (typeof allCategories !== "undefined" ? allCategories : categories).forEach(function (c) { %>
+            <option value="<%= c.title %>"><%= c.title %></option>
+          <% }); %>
+        </select>
+      </label>
+      <label class="label">Description
+        <textarea id="edit-category-description" class="field mt-1.5 resize-y" name="description" rows="3" placeholder="Shown under the category in the menu."></textarea>
+      </label>
+      <div class="flex gap-2 pt-0.5">
+        <button type="submit" class="rounded-full bg-amber px-4 py-2.5 text-[13px] font-semibold text-pine hover:bg-[#d79c4c]">Save changes</button>
+        <button type="button" data-close-modal class="pill-light">Cancel</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+  function openEditCategoryModal(index, title, parent, description) {
+    const form = document.getElementById("edit-category-form");
+    const titleInput = document.getElementById("edit-category-title");
+    const parentSelect = document.getElementById("edit-category-parent");
+    const descInput = document.getElementById("edit-category-description");
+
+    if (form) form.action = "/admin/categories/" + index;
+    if (titleInput) titleInput.value = title;
+    if (parentSelect) parentSelect.value = parent || "None";
+    if (descInput) descInput.value = description || "";
+
+    const modal = document.getElementById("edit-category");
+    if (modal) {
+      modal.classList.remove("hidden");
+      modal.classList.add("grid");
+    }
+  }
+</script>
+
+<%- include("partials/footer") %>

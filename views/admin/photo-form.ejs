@@ -1,0 +1,271 @@
+<% const isEdit=mode==="edit" ; %>
+<%- include("partials/head", { pageTitle: (isEdit ? "Edit photo" : "Add photo" ) + " · OF Wild & Walls" }) %>
+<div class="flex min-h-screen flex-col">
+  <%- include("partials/header", { flash: "" , primaryForm: "photo-form" }) %>
+
+  <div class="grid flex-1 items-stretch" style="grid-template-columns: 214px 1fr">
+    <%- include("partials/sidebar", { nav: nav, photos: [], categories: categories }) %>
+
+    <main class="min-w-0 px-7 pb-11 pt-6">
+      <form id="photo-form" method="post" enctype="multipart/form-data"
+        action="<%= isEdit ? '/admin/photos/' + (typeof originalSlug !== 'undefined' && originalSlug ? originalSlug : photo.slug) : '/admin/photos' %>">
+        <% if (typeof returnPage !== "undefined" && returnPage) { %>
+          <input type="hidden" name="page" value="<%= returnPage %>">
+        <% } %>
+        <% if (typeof returnSearch !== "undefined" && returnSearch) { %>
+          <input type="hidden" name="search" value="<%= returnSearch %>">
+        <% } %>
+        <% if (typeof error !== "undefined" && error) { %>
+          <div class="mb-4 flex items-center justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] font-medium text-red-700">
+            <span>&#9888; <%= error %></span>
+            <button type="button" onclick="this.parentElement.remove()" class="text-red-500 hover:text-red-800">&times;</button>
+          </div>
+        <% } %>
+        <div class="mb-4 flex items-end justify-between gap-4">
+          <div>
+            <h1 class="m-0 mb-1 text-[21px] font-semibold tracking-tight">
+              <%= isEdit ? "Edit photo" : "Add photo" %>
+            </h1>
+            <p class="m-0 text-[13px] text-mute">
+              <%= isEdit ? "/" + photo.slug : "Upload the file, then describe it. Extra fields are yours to invent." %>
+            </p>
+          </div>
+          <div class="flex gap-2">
+            <a href="/admin/photos<%= (typeof returnPage !== "undefined" && returnPage) ? "?page=" + returnPage + (typeof returnSearch !== "undefined" && returnSearch ? "&search=" + encodeURIComponent(returnSearch) : "") : "" %>" class="pill-light">Cancel</a>
+            <button type="submit" name="live" value="draft" class="pill-light">Save as draft</button>
+            <button type="submit" name="live" value="live" class="pill-dark">
+              <%= isEdit ? "Save changes" : "Save & Publish" %>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid items-start gap-4" style="grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr)">
+
+          <div class="grid gap-4">
+            <section class="card p-5">
+              <div class="kicker mb-3.5">Core details</div>
+              <div class="grid grid-cols-2 gap-3.5">
+                <label class="label">
+                    <div class="flex items-center justify-between">
+                       <span>
+                            Hover caption <span class="text-red-500">*</span>
+                           </span>
+                            <span class="text-[11px] text-mute">22 characters max</span>
+                              </div>
+
+                      <input
+                      class="field mt-1.5"
+                       name="cap"
+                        value="<%= photo.cap %>"
+                          placeholder="Morning Patrol"
+                           required
+                           maxlength="22"
+                                   >
+                                   </label>
+                <label class="label">Slug <span class="text-red-500">*</span>
+                  <input class="field mt-1.5" name="slug" value="<%= photo.slug %>" placeholder="morning-patrol" required>
+                </label>
+                <label class="label">Panel title <span class="text-red-500">*</span>
+                  <input class="field mt-1.5" name="title" value="<%= photo.title %>" placeholder="Ridgeline, Noon" required>
+                </label>
+                <label class="label">Reference <span class="text-red-500">*</span>
+                  <input class="field mt-1.5" name="ref" value="<%= photo.ref %>" placeholder="HR.01 / 05" required>
+                </label>
+                <label class="label">Category <span class="text-red-500">*</span>
+                  <select class="field mt-1.5" name="category_id" required>
+                    <option value="">Unassigned</option>
+                    <% categories.forEach(function (c) { %>
+                      <option value="<%= c.id %>" <%= Number(photo.category_id) === Number(c.id) ? "selected" : "" %>><%= c.title %></option>
+                    <% }); %>
+                  </select>
+                </label>
+                <label class="label">Collection <span class="text-red-500">*</span>
+                  <select class="field mt-1.5" name="collection_id" required>
+                    <option value="">Unassigned</option>
+                    <% (typeof collections !== "undefined" ? collections : []).forEach(function (col) { %>
+                      <option value="<%= col.id %>" <%= Number(photo.collection_id) === Number(col.id) ? "selected" : "" %>><%= col.title || col.name %></option>
+                    <% }); %>
+                  </select>
+                </label>
+                <label class="label">Camera <span class="text-red-500">*</span>
+                  <select class="field mt-1.5" name="camera_id" required>
+                    <option value="">Unassigned</option>
+                    <% (typeof cameras !== "undefined" ? cameras : []).forEach(function (cam) { const camName = cam.brand ? (cam.brand + ' ' + cam.model) : cam.model; %>
+                      <option value="<%= cam.id %>" <%= Number(photo.camera_id) === Number(cam.id) ? "selected" : "" %>><%= camName %></option>
+                    <% }); %>
+                  </select>
+                </label>
+                <label class="label">Lens <span class="text-red-500">*</span>
+                  <select class="field mt-1.5" name="lens_id" required>
+                    <option value="">Unassigned</option>
+                    <% (typeof lenses !== "undefined" ? lenses : []).forEach(function (l) { const lensName = l.brand ? (l.brand + ' ' + l.model) : l.model; %>
+                      <option value="<%= l.id %>" <%= Number(photo.lens_id) === Number(l.id) ? "selected" : "" %>><%= lensName %></option>
+                    <% }); %>
+                  </select>
+                </label>
+                <label class="label">Date <span class="text-red-500">*</span>
+                  <input class="field mt-1.5" type="date" name="date" value="<%= photo.date %>" required>
+                </label>
+                <label class="label">Country <span class="text-red-500">*</span>
+                  <select id="country-select" class="field mt-1.5" required>
+                    <option value="">Select country</option>
+                  </select>
+                </label>
+                <label class="label">State / Region <span class="text-red-500">*</span>
+                  <select id="state-select" name="country_id" class="field mt-1.5" required>
+                    <option value="">Select state</option>
+                  </select>
+                  <input type="hidden" id="state-hidden" name="state" value="<%= photo.state || '' %>">
+                </label>
+                <label class="label">Location <span class="text-red-500">*</span>
+                  <input class="field mt-1.5" name="location" value="<%= photo.location || '' %>" placeholder="Spiti, Himachal Pradesh" required>
+                </label>
+                <label class="label col-span-2">Settings (Field Data) <span class="text-red-500">*</span>
+                  <input class="field mt-1.5" name="settings" value="<%= photo.settings || '' %>" placeholder="1/125 · f/11 · ISO 100" required>
+                </label>
+              </div>
+              <label class="label mt-3.5">About the photo <span class="text-red-500">*</span>
+                <textarea class="field mt-1.5 resize-y" name="about" rows="3" placeholder="One or two lines about the moment." required><%= photo.about %></textarea>
+              </label>
+              <label class="label mt-3.5">Alternate note
+                <textarea class="field mt-1.5 resize-y" name="altNote" rows="2" placeholder="The line that sits under the rule."><%= photo.altNote %></textarea>
+              </label>
+            </section>
+          </div>
+
+          <div class="grid gap-4">
+            <section class="card p-5">
+              <div class="kicker mb-3.5">File</div>
+              <div id="image-preview-container" class="<%= photo.src ? '' : 'hidden' %> mb-3 aspect-[3/2] w-full overflow-hidden rounded-2xl bg-[#e6e0d7]">
+                <img id="image-preview" src="<%= photo.src || '' %>" alt="<%= photo.alt || '' %>" class="block h-full w-full object-cover">
+              </div>
+
+              <div id="drop-zone" class="rounded-2xl border-2 border-dashed border-[#d4cabb] bg-sand px-5 py-7 text-center transition-colors hover:border-amber hover:bg-amber/5 cursor-pointer">
+                <div class="mb-1.5 text-sm font-semibold" id="drop-zone-text"><%= photo.src ? 'Drop new JPEG or click replace' : 'Drop a JPEG here' %></div>
+                <div class="mb-3.5 text-xs text-mute" id="drop-zone-subtext">Saved to S3 Bucket · 4000px longest edge</div>
+                <label class="inline-block cursor-pointer rounded-full bg-pine px-4 py-2.5 text-xs text-cream hover:bg-[#1a382c]">
+                  <span id="choose-file-btn-text"><%= photo.src ? 'Replace file' : 'Choose file' %></span>
+                  <input type="file" id="photo-file-input" name="photo" accept="image/jpeg,image/png,image/webp" class="hidden">
+                </label>
+              </div>
+
+              <input type="hidden" name="src" value="<%= photo.src %>">
+              <label class="label mt-3.5">Alt text <span class="text-red-500">*</span>
+                <input class="field mt-1.5" name="alt" value="<%= photo.alt %>" placeholder="Tiger walking" required>
+              </label>
+            </section>
+          </div>
+        </div>
+      </form>
+    </main>
+  </div>
+</div>
+
+<script>
+  (function() {
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('photo-file-input');
+    const previewContainer = document.getElementById('image-preview-container');
+    const previewImg = document.getElementById('image-preview');
+    const dropText = document.getElementById('drop-zone-text');
+    const btnText = document.getElementById('choose-file-btn-text');
+
+    if (!dropZone || !fileInput) return;
+
+    function handleFile(file) {
+      if (!file || !file.type.startsWith('image/')) return;
+      const objectUrl = URL.createObjectURL(file);
+      if (previewImg) previewImg.src = objectUrl;
+      if (previewContainer) previewContainer.classList.remove('hidden');
+      if (dropText) dropText.textContent = 'Selected: ' + file.name;
+      if (btnText) btnText.textContent = 'Change file';
+    }
+
+    fileInput.addEventListener('change', function(e) {
+      if (e.target.files && e.target.files[0]) {
+        handleFile(e.target.files[0]);
+      }
+    });
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropZone.addEventListener(eventName, function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.add('border-amber', 'bg-amber/10');
+      }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.remove('border-amber', 'bg-amber/10');
+      }, false);
+    });
+
+    dropZone.addEventListener('drop', function(e) {
+      const dt = e.dataTransfer;
+      const files = dt.files;
+      if (files && files.length > 0) {
+        fileInput.files = files;
+        handleFile(files[0]);
+      }
+    });
+  })();
+</script>
+
+<script>
+  (function() {
+    const countries = <%- JSON.stringify(typeof countries !== "undefined" ? countries : []) %>;
+    const selectedCountryId = <%- photo.country_id ? Number(photo.country_id) : "null" %>;
+    const countrySelect = document.getElementById('country-select');
+    const stateSelect = document.getElementById('state-select');
+    const stateHidden = document.getElementById('state-hidden');
+
+    if (!countrySelect || !stateSelect || !stateHidden) return;
+
+    function syncStateHidden() {
+      const opt = stateSelect.options[stateSelect.selectedIndex];
+      stateHidden.value = (opt && opt.value) ? opt.textContent : '';
+    }
+
+    const names = [...new Set(countries.map(c => c.country))].sort();
+    names.forEach(function(name) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      countrySelect.appendChild(opt);
+    });
+
+    function populateStates(countryName, preselectId) {
+      stateSelect.innerHTML = '<option value="">Select state</option>';
+      countries
+        .filter(c => c.country === countryName)
+        .forEach(function(c) {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = c.state;
+          if (preselectId && Number(preselectId) === Number(c.id)) opt.selected = true;
+          stateSelect.appendChild(opt);
+        });
+    }
+
+    countrySelect.addEventListener('change', function() {
+      populateStates(countrySelect.value, null);
+      syncStateHidden();
+    });
+
+    stateSelect.addEventListener('change', syncStateHidden);
+
+    if (selectedCountryId) {
+      const match = countries.find(c => Number(c.id) === selectedCountryId);
+      if (match) {
+        countrySelect.value = match.country;
+        populateStates(match.country, selectedCountryId);
+        syncStateHidden();
+      }
+    }
+  })();
+</script>
+
+<%- include("partials/footer") %>

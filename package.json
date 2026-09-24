@@ -1,0 +1,43 @@
+{
+  "name": "of-wild-and-walls",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Photography portfolio (Flow/Grid/Detail) with a merged /admin panel — Express + EJS + Tailwind (CDN) + TypeScript",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "migrate:up": "db-migrate up --config=config/database.json",
+    "migrate:down": "db-migrate reset --config=config/database.json",
+    "migrate:down:step": "db-migrate down --config=config/database.json",
+    "migrate:reset": "db-migrate reset --config=config/database.json",
+    "migrate:create": "db-migrate create --config=config/database.json"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1125.0",
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "db-migrate-mysql": "^3.0.0",
+    "dotenv": "^17.4.2",
+    "ejs": "^3.1.10",
+    "express": "^4.19.2",
+    "express-session": "^1.19.0",
+    "multer": "^2.3.0",
+    "mysql2": "^3.24.2",
+    "nodemon": "^3.1.14"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^4.17.21",
+    "@types/express-session": "^1.19.0",
+    "@types/multer": "^2.2.0",
+    "@types/node": "^22.10.2",
+    "db-migrate": "^0.11.14",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
+  }
+}

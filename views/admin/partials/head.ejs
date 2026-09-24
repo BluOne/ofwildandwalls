@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= typeof pageTitle !== "undefined" ? pageTitle : "OF Wild & Walls Admin" %></title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            pine: "#1b2a27",
+            pine2: "#223531",
+            amber: "#c98b3a",
+            amberink: "#8a5a1c",
+            cream: "#f4f1ec",
+            sand: "#faf8f4",
+            line: "#e7e0d6",
+            line2: "#ddd6cc",
+            ink: "#221f1c",
+            mute: "#6f6862"
+          },
+          fontFamily: {
+            sans: ["Archivo", "ui-sans-serif", "system-ui", "sans-serif"]
+          },
+          borderRadius: { card: "18px" }
+        }
+      }
+    };
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style type="text/tailwindcss">
+    .field { @apply block w-full rounded-xl border border-line2 bg-white px-3.5 py-2.5 text-[13px] text-ink; }
+    .label { @apply block text-xs text-mute; }
+    .card { @apply rounded-card border border-line bg-white; }
+    .pill { @apply rounded-full px-4 py-2.5 text-[13px]; }
+    .pill-dark { @apply pill bg-pine font-medium text-cream hover:bg-pine2; }
+    .pill-light { @apply pill border border-line2 bg-white hover:bg-sand; }
+    .th { @apply border-b border-[#eee7dd] px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.1em] text-mute; }
+    .td { @apply px-4 py-2.5 align-middle; }
+    .kicker { @apply text-[11px] uppercase tracking-[0.14em] text-amberink; }
+  </style>
+  <style>
+    *:focus-visible { outline: 2px solid #c98b3a; outline-offset: 2px; }
+    ::selection { background: rgba(201, 139, 58, 0.28); }
+  </style>
+</head>
+<body class="bg-cream text-ink font-sans min-w-[1040px]">

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Admin Signup | Of Wild & Walls</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              mute: "#77736c",
+              ink: "#24231f",
+              paper: "#f4f1eb",
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+
+  <body class="min-h-screen bg-paper text-ink">
+    <main class="flex min-h-screen items-center justify-center px-5 py-10">
+      <section
+        class="w-full max-w-md border border-[#dedad2] bg-white p-8 sm:p-10"
+      >
+        <!-- Header -->
+        <div class="mb-8">
+          <p class="mb-3 text-[12px] font-semibold tracking-[2px]">
+            OF WILD & WALLS
+          </p>
+
+          <h1 class="m-0 text-[30px] font-semibold tracking-tight">
+            Admin Signup
+          </h1>
+
+          <p class="mt-2 text-[14px] text-mute">
+            Create an administrator account.
+          </p>
+        </div>
+
+        <!-- Error Message -->
+        <% if (typeof error !== "undefined" && error) { %>
+          <div class="mb-5 border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
+            <%= error %>
+          </div>
+        <% } %>
+
+        <!-- Signup Form -->
+        <form
+          action="/admin/submit-form"
+          method="POST"
+          class="flex flex-col gap-5"
+        >
+          <!-- Username -->
+          <div class="flex flex-col gap-2">
+            <label for="username" class="text-[13px] font-semibold">
+              Username
+            </label>
+
+            <input
+              type="text"
+              id="username"
+              name="username"
+              placeholder="Enter username"
+              autocomplete="username"
+              required
+              class="w-full border border-[#d5d1c8] bg-[#faf9f6] px-3.5 py-3 text-[14px] outline-none transition focus:border-ink focus:bg-white"
+            />
+          </div>
+
+          <!-- Email -->
+          <div class="flex flex-col gap-2">
+            <label for="email" class="text-[13px] font-semibold"> Email </label>
+
+            <input
+              type="email"
+              id="email"
+              name="email"
+              placeholder="Enter email address"
+              autocomplete="email"
+              required
+              class="w-full border border-[#d5d1c8] bg-[#faf9f6] px-3.5 py-3 text-[14px] outline-none transition focus:border-ink focus:bg-white"
+            />
+          </div>
+
+          <!-- Role -->
+          <div class="flex flex-col gap-2">
+            <label for="role" class="text-[13px] font-semibold"> Role </label>
+
+            <select
+              id="role"
+              name="role"
+              required
+              class="w-full border border-[#d5d1c8] bg-[#faf9f6] px-3.5 py-3 text-[14px] outline-none transition focus:border-ink focus:bg-white"
+            >
+              <option value="admin" selected>Admin</option>
+              <option value="editor">Editor</option>
+              <option value="user">User</option>
+            </select>
+          </div>
+
+          <!-- Password -->
+          <div class="flex flex-col gap-2">
+            <label for="password" class="text-[13px] font-semibold">
+              Password
+            </label>
+
+            <input
+              type="password"
+              id="password"
+              name="password"
+              placeholder="Create a password"
+              autocomplete="new-password"
+              required
+              class="w-full border border-[#d5d1c8] bg-[#faf9f6] px-3.5 py-3 text-[14px] outline-none transition focus:border-ink focus:bg-white"
+            />
+          </div>
+
+          <!-- Submit -->
+          <div class="mt-2">
+            <button
+              type="submit"
+              class="w-full bg-ink px-4 py-3.5 text-[14px] font-semibold text-white transition hover:opacity-90"
+            >
+              Create Admin Account
+            </button>
+          </div>
+        </form>
+
+        <!-- Footer -->
+        <div class="mt-7 text-center">
+          <a href="/admin/login" class="text-[13px] text-[#55514a] hover:underline">
+            Already have an account? Login
+          </a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
+```
