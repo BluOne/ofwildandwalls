@@ -179,6 +179,9 @@
         gridSection.classList.add("hidden");
         flowSection.classList.remove("hidden");
 
+        // Flow skips layout while hidden (it has no width to measure), so
+        // catch up on any resize or filter change that happened meanwhile.
+        if (flowRelayout) flowRelayout();
         if (restoreFlowScroll) restoreFlowScroll();
       }
 
@@ -456,7 +459,7 @@
    */
   var flowLoadAll = null;
   var gridLoadAll = null;
-  // var flowRelayout = null;
+  var flowRelayout = null;
 
   // Set once each view's own IIFE runs, so the Flow/Grid tab switcher below
   // can re-run the same scroll restore it does on a full page load.
@@ -489,11 +492,10 @@
   }
 
   /*
-   * Flow's own script (below) lays photos out in a dense bento grid;
-   * Grid uses a simple horizontal strip. Both close ranks on their own
-   * — hiding a child with display:none removes it from grid placement
-   * (Flow) or the flex flow (Grid) immediately, and grid-auto-flow:
-   * dense backfills the gap, so no re-layout is needed here.
+   * Grid is a simple horizontal strip that closes ranks on its own when
+   * a child is hidden. Flow positions every photo absolutely (see its
+   * own script below), so a hidden photo would leave a hole — hence the
+   * flowRelayout() re-run at the end.
    */
   function applyFilters() {
     var photos = document.querySelectorAll(".photo-item");
@@ -553,9 +555,9 @@
 
       el.style.display = visible ? "" : "none";
     });
-    // if (flowRelayout) {
-    //   flowRelayout();
-    // }
+    if (flowRelayout) {
+      flowRelayout();
+    }
   }
 
   // Only one filter can be active at a time — picking a new one clears
@@ -2132,7 +2134,7 @@
 
   //
 
-  /* ── Flow view — bento grid layout + infinite scroll ───────────────── */
+  /* ── Flow view — scattered grid layout + infinite scroll ─────────── */
 
   (function () {
     var canvas = document.getElementById("flowCanvas");
@@ -2168,33 +2170,35 @@
 
       window.scrollTo(0, savedPosition);
     }
-
     /*
      * IMPORTANT:
      *
-     * #flowCanvas is itself the CSS grid (.bento-grid / .s-* in
-     * partials/head.ejs) — grid-auto-flow: dense backfills gaps with
-     * later items, which is what produces the mosaic look. .photo-item
-     * elements are direct children of #flowCanvas; nothing here moves
-     * them into a wrapper the way the old column-balancing layout did.
+     * #flowCanvas is a sparse scatter on a fixed grid, not a packed
+     * masonry: roughly half the cells are deliberately left empty. The
+     * grid is FLOW_COLS columns wide with a fixed row step, and every
+     * photo is one of two sizes:
      *
-     * Each photo's tile size is one of five presets (s-sm/s-md/s-lg/
-     * s-wide/s-tall), picked by a seeded PRNG keyed off the photo's own
-     * slug (flowSeed/flowRng) — so a given photo always gets the same
-     * *initial* size no matter when or where it loads: a fresh page
-     * load, a later infinite-scroll page, and a resize all agree.
+     *  - small: 1 column wide, reserves 1 row
+     *  - large: 2 columns wide, reserves 2 rows
      *
-     * That initial pick knows nothing about the photo itself, so once
-     * its <img> has loaded, placeFlowItem corrects it to whichever
-     * preset's own width:height ratio is the closest match to the
-     * photo's real one (flowBestSizeClass) — otherwise a panorama
-     * seeded into the portrait s-tall slot (or a portrait photo into
-     * the wide s-wide slot) gets object-cover-cropped down to an odd
-     * sliver of itself.
+     * Width is fixed by the size. A large tile fills its whole 2-row box
+     * (cropped to fit); a small tile's height follows its photo's own
+     * aspect ratio, capped to its row (see flowSizeTile).
+     *
+     * Photos are placed in DOM order, row by row. Each row only takes a
+     * few new tiles (FLOW_ROW_QUOTA), dropped into seeded-random free
+     * columns, with columns that don't touch a neighbor weighted higher —
+     * that's what leaves the white space around each photo. Everything is
+     * seeded (by slug, and by row index), so re-running the layout on
+     * resize, filter or infinite-scroll puts every photo back in the
+     * same cell.
+     *
+     * Placement only depends on each photo's size, not on its image, so
+     * it runs immediately; once an image loads, only that tile's height
+     * is corrected (flowSizeTile) — nothing else moves.
      */
 
-    // Seeded PRNG (mulberry32) — deterministic per seed, so the same
-    // photo always gets the same "random" size.
+    // Seeded PRNG (mulberry32) — deterministic per seed.
     function flowRng(seed) {
       var t = seed + 0x6d2b79f5;
 
@@ -2216,90 +2220,134 @@
       return h;
     }
 
-    var FLOW_SIZES = ["s-sm", "s-md", "s-lg", "s-wide", "s-tall"];
+    // Proportions measured from the reference design: column gap is 20%
+    // of a column's width, the row step is 1.3x the column step, ~37% of
+    // photos are large, and about 2-3 photos start on each row (of 8
+    // columns — scaled down for narrower grids).
+    var FLOW_GAP_RATIO = 0.2;
+    var FLOW_ROW_RATIO = 1.3;
+    var FLOW_LARGE_CHANCE = 0.37;
+    var FLOW_ROW_QUOTA = [1, 2, 2, 2, 3, 3, 4];
+    var FLOW_LOOSE_WEIGHT = 4;
 
-    // Column/row span of each preset — must match the .s-* rules in
-    // partials/head.ejs. Used to turn live grid metrics into each
-    // preset's actual rendered aspect ratio (see flowMeasureSizeAspects).
-    var FLOW_SIZE_SPANS = {
-      "s-sm": { col: 2, row: 4 },
-      "s-md": { col: 2, row: 7 },
-      "s-lg": { col: 4, row: 10 },
-      "s-wide": { col: 4, row: 5 },
-      "s-tall": { col: 2, row: 9 },
-    };
+    function flowColumnCount() {
+      var w = window.innerWidth;
 
-    function flowSizeClass(slug) {
-      var r = flowRng(flowSeed(slug || ""));
+      if (w <= 560) {
+        return 4;
+      }
 
-      return FLOW_SIZES[Math.floor(r() * FLOW_SIZES.length)];
+      if (w <= 900) {
+        return 6;
+      }
+
+      return 8;
     }
 
-    // Each preset's actual rendered width:height ratio, measured from
-    // #flowCanvas's live computed grid metrics rather than hardcoded —
-    // column width scales with the viewport while grid-auto-rows/gap
-    // are fixed px, so a hardcoded ratio drifts wrong outside whatever
-    // one width it was calculated for. A multi-row span also swallows
-    // the row-gap *between* its own rows into its rendered height, which
-    // a naive span-count × row-height guess misses. Recomputed on
-    // buildFlowGrid() and on any resize that crosses a breakpoint.
-    var flowSizeAspects = null;
+    var flowCols = 8;
+    var flowColWidth = 0;
+    var flowGap = 0;
+    var flowRowStep = 0;
+    var flowPadLeft = 0;
+    var flowPadTop = 0;
+    var flowOcc = [];
+    var flowRow = 0;
+    var flowRowLeft = 0;
 
-    function flowMeasureSizeAspects() {
-      var style = getComputedStyle(canvas);
+    function flowRowQuota(row) {
+      var r = flowRng(row * 7919 + 17);
+      var q = FLOW_ROW_QUOTA[Math.floor(r() * FLOW_ROW_QUOTA.length)];
 
-      var colUnit = parseFloat(style.gridTemplateColumns) || 1;
-      var rowUnit = parseFloat(style.gridAutoRows) || 1;
-      var colGap = parseFloat(style.columnGap) || 0;
-      var rowGap = parseFloat(style.rowGap) || 0;
-
-      var aspects = {};
-
-      FLOW_SIZES.forEach(function (cls) {
-        var span = FLOW_SIZE_SPANS[cls];
-        var width = span.col * colUnit + (span.col - 1) * colGap;
-        var height = span.row * rowUnit + (span.row - 1) * rowGap;
-
-        aspects[cls] = width / height;
-      });
-
-      flowSizeAspects = aspects;
+      return Math.max(1, Math.round((q * flowCols) / 8));
     }
 
-    // Whichever preset's measured aspect ratio is the closest match
-    // (compared in log space, since ratios are multiplicative) to the
-    // photo's real one.
-    function flowBestSizeClass(aspect) {
-      var best = FLOW_SIZES[0];
-      var bestDist = Infinity;
-      var logAspect = Math.log(aspect);
+    function flowStartRow(row) {
+      flowRow = row;
+      flowRowLeft = flowRowQuota(row);
+    }
 
-      FLOW_SIZES.forEach(function (cls) {
-        var dist = Math.abs(logAspect - Math.log(flowSizeAspects[cls]));
+    function flowFree(row, col) {
+      return col >= 0 && col < flowCols && !(flowOcc[row] && flowOcc[row][col]);
+    }
 
-        if (dist < bestDist) {
-          bestDist = dist;
-          best = cls;
+    function flowFits(row, col, span) {
+      for (var r = row; r < row + span; r++) {
+        for (var c = col; c < col + span; c++) {
+          if (!flowFree(r, c)) {
+            return false;
+          }
         }
-      });
+      }
 
-      return best;
+      return true;
     }
 
-    function buildFlowGrid() {
-      canvas.className =
-        "bento-grid px-4 md:px-9 pt-6 pb-18 overflow-visible";
+    // Free columns in `row` a tile of `span` fits at, each weighted —
+    // a column that leaves an empty cell on both sides counts
+    // FLOW_LOOSE_WEIGHT times, so tiles mostly keep white space between
+    // them but can still sit side by side now and then.
+    function flowCandidates(row, span) {
+      var out = [];
 
-      flowMeasureSizeAspects();
+      for (var c = 0; c <= flowCols - span; c++) {
+        if (!flowFits(row, c, span)) {
+          continue;
+        }
+
+        var loose = flowFree(row, c - 1) && flowFree(row, c + span);
+        var weight = loose ? FLOW_LOOSE_WEIGHT : 1;
+
+        for (var k = 0; k < weight; k++) {
+          out.push(c);
+        }
+      }
+
+      return out;
     }
 
-    // Applies a .photo-item's seeded size class immediately, so the tile
-    // is never left unsized while its image loads, then swaps it for
-    // whichever preset actually fits the photo once that's known.
-    function placeFlowItem(a) {
-      var initial = flowSizeClass(a.getAttribute("data-slug"));
+    function flowOccupy(row, col, span) {
+      for (var r = row; r < row + span; r++) {
+        while (flowOcc.length <= r) {
+          flowOcc.push(new Array(flowCols).fill(false));
+        }
 
-      a.classList.add(initial);
+        for (var c = col; c < col + span; c++) {
+          flowOcc[r][c] = true;
+        }
+      }
+    }
+
+    // Sets a placed tile's size. A large tile always fills its whole
+    // 2x2 box — a tall portrait frame, like the reference design — with
+    // object-cover cropping whatever doesn't fit. A small tile follows
+    // its photo's own aspect ratio (3:4 portrait until the image has
+    // loaded), capped to its one row. Either way, plus its small seeded
+    // drop within the row.
+    function flowSizeTile(a) {
+      var t = a._flow;
+
+      if (!t) {
+        return;
+      }
+
+      var width = t.span * flowColWidth + (t.span - 1) * flowGap;
+      var reserved = t.span * flowRowStep - flowGap;
+      var aspect = a._flowAspect || 3 / 4;
+      var height = t.span > 1 ? reserved : Math.min(width / aspect, reserved);
+      var drop = Math.min(t.drop * flowRowStep, Math.max(0, reserved - height));
+
+      a.style.width = width + "px";
+      a.style.height = height + "px";
+      a.style.left = flowPadLeft + t.col * (flowColWidth + flowGap) + "px";
+      a.style.top = flowPadTop + t.row * flowRowStep + drop + "px";
+    }
+
+    function flowWatchImage(a) {
+      if (a._flowWatched) {
+        return;
+      }
+
+      a._flowWatched = true;
 
       var img = a.querySelector("img");
 
@@ -2307,41 +2355,140 @@
         return;
       }
 
-      function correctFlowItemSize() {
-        if (!img.naturalWidth || !img.naturalHeight) {
-          return;
-        }
-
-        var best = flowBestSizeClass(img.naturalWidth / img.naturalHeight);
-
-        if (best !== initial) {
-          a.classList.remove(initial);
-          a.classList.add(best);
+      function measure() {
+        if (img.naturalWidth && img.naturalHeight) {
+          a._flowAspect = img.naturalWidth / img.naturalHeight;
+          flowSizeTile(a);
         }
       }
 
       if (img.complete) {
-        correctFlowItemSize();
+        measure();
       } else {
-        img.addEventListener("load", correctFlowItemSize);
+        img.addEventListener("load", measure, { once: true });
       }
     }
 
-    // The server already rendered the first page of photos flat inside
-    // #flowCanvas (see index.ejs) as direct children — just size them.
-    buildFlowGrid();
+    function flowPlace(a) {
+      var r = flowRng(flowSeed(a.getAttribute("data-slug") || ""));
+      var span = r() < FLOW_LARGE_CHANCE ? 2 : 1;
+      // A few tiles sit slightly below their row line, like the reference.
+      var drop = r() < 0.3 ? 0.05 + r() * 0.09 : 0;
+      var col;
 
-    Array.prototype.slice
-      .call(canvas.querySelectorAll(".photo-item"))
-      .forEach(placeFlowItem);
+      for (;;) {
+        if (flowRowLeft > 0) {
+          var options = flowCandidates(flowRow, span);
 
-    // Re-measure when a resize crosses one of .bento-grid's breakpoints,
-    // so any photo that finishes loading afterward (a lazy one further
-    // down the page, or the next infinite-scroll batch) still gets
-    // matched against the size the grid is rendering at now. Tiles
-    // already placed keep whatever size they were given — like the
-    // seeded initial pick, this doesn't retroactively rebuild the page.
+          if (options.length) {
+            col = options[Math.floor(r() * options.length)];
+            break;
+          }
+        }
+
+        flowStartRow(flowRow + 1);
+      }
+
+      flowOccupy(flowRow, col, span);
+      flowRowLeft--;
+
+      a._flow = { row: flowRow, col: col, span: span, drop: drop };
+      a.style.position = "absolute";
+
+      flowSizeTile(a);
+      flowWatchImage(a);
+    }
+
+    // Lays out every visible photo from scratch. Cheap enough to re-run
+    // on every resize, filter change and infinite-scroll page, and fully
+    // deterministic, so photos already on screen never jump.
+    function layoutFlow() {
+      if (canvas.offsetParent === null) {
+        return;
+      }
+
+      flowLastWidth = canvas.clientWidth;
+
+      var style = getComputedStyle(canvas);
+      var padRight = parseFloat(style.paddingRight) || 0;
+      var padBottom = parseFloat(style.paddingBottom) || 0;
+
+      flowPadLeft = parseFloat(style.paddingLeft) || 0;
+      flowPadTop = parseFloat(style.paddingTop) || 0;
+      flowCols = flowColumnCount();
+
+      var inner = canvas.clientWidth - flowPadLeft - padRight;
+
+      flowColWidth = inner / (flowCols + (flowCols - 1) * FLOW_GAP_RATIO);
+      flowGap = flowColWidth * FLOW_GAP_RATIO;
+      flowRowStep = (flowColWidth + flowGap) * FLOW_ROW_RATIO;
+      flowOcc = [];
+      flowStartRow(0);
+
+      Array.prototype.slice
+        .call(canvas.querySelectorAll(".photo-item"))
+        .forEach(function (a) {
+          if (a.style.display === "none") {
+            a._flow = null;
+            return;
+          }
+
+          flowPlace(a);
+        });
+
+      canvas.style.height =
+        Math.max(0, flowPadTop + flowOcc.length * flowRowStep - flowGap + padBottom) +
+        "px";
+    }
+
     var flowResizeTimer = null;
+    var flowLastWidth = 0;
+
+    canvas.className = "relative px-2 pt-6 pb-18 overflow-visible";
+    layoutFlow();
+    flowRelayout = layoutFlow;
+
+    // head.ejs keeps #flowCanvas invisible until .is-ready. Wait for the
+    // eagerly-loaded (first-screen) photos too, since a small tile only
+    // gets its real height once its image loads — capped so one slow
+    // image can't hold the whole page blank.
+    (function revealFlow() {
+      var pending = Array.prototype.slice
+        .call(canvas.querySelectorAll('img[loading="eager"]'))
+        .filter(function (img) {
+          return !img.complete;
+        });
+      var done = false;
+
+      function reveal() {
+        if (done) {
+          return;
+        }
+
+        done = true;
+        canvas.classList.add("is-ready");
+      }
+
+      if (!pending.length) {
+        reveal();
+        return;
+      }
+
+      var left = pending.length;
+
+      pending.forEach(function (img) {
+        function settle() {
+          if (--left === 0) {
+            reveal();
+          }
+        }
+
+        img.addEventListener("load", settle, { once: true });
+        img.addEventListener("error", settle, { once: true });
+      });
+
+      setTimeout(reveal, 1200);
+    })();
 
     window.addEventListener("resize", function () {
       if (canvas.offsetParent === null) {
@@ -2349,7 +2496,12 @@
       }
 
       clearTimeout(flowResizeTimer);
-      flowResizeTimer = setTimeout(flowMeasureSizeAspects, 150);
+      flowResizeTimer = setTimeout(function () {
+        if (canvas.clientWidth !== flowLastWidth) {
+          flowLastWidth = canvas.clientWidth;
+          layoutFlow();
+        }
+      }, 150);
     });
 
     var pageSize = parseInt(canvas.getAttribute("data-page-size"), 10) || 30;
@@ -2380,13 +2532,11 @@
 
       a.innerHTML =
         '<div class="relative h-full">' +
-        '<div class="absolute inset-0 rounded-lg overflow-hidden">' +
         '<img src="' +
         escAttr(p.src) +
         '" alt="' +
         escAttr(p.alt) +
         '" class="block w-full h-full object-cover select-none">' +
-        "</div>" +
         // Cursor-following plus icon
         '<span aria-hidden="true" class="photo-plus-cursor pointer-events-none absolute z-20 opacity-0 -translate-x-1/2 -translate-y-1/2">' +
         '<span class="relative w-[68px] h-[68px] grid place-items-center">' +
@@ -2472,12 +2622,12 @@
       newPhotos.forEach(function (p) {
         var a = buildPhotoItem(p);
 
-        placeFlowItem(a);
         canvas.appendChild(a);
       });
 
       /*
-       * Apply currently active filters after adding new photos.
+       * Apply currently active filters after adding new photos — this
+       * also re-runs the Flow layout (flowRelayout), which places them.
        */
       applyFilters();
     }
