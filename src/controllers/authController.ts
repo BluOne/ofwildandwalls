@@ -9,82 +9,10 @@ interface PasswordRow extends RowDataPacket {
   role_name: string;
 }
 
-interface SignupBody {
-  username?: string;
-  role?: string;
-  email?: string;
-  password?: string;
-}
-
 interface LoginBody {
   email?: string;
   password?: string;
 }
-
-interface RoleRow extends RowDataPacket {
-  id: number;
-  name: string;
-}
-
-const signup = async (
-  req: Request<{}, {}, SignupBody>,
-  res: Response
-) => {
-  try {
-    const username = (req.body.username || "").trim();
-    const email = (req.body.email || "").trim().toLowerCase();
-    const password = req.body.password || "";
-    const roleInput = (req.body.role || "admin").trim().toLowerCase();
-
-    if (!username || !email || !password) {
-      return res.status(400).render("signup", {
-        error: "Username, email, and password are required."
-      });
-    }
-
-    // Find role ID
-    const [rows] = await pool.query<RoleRow[]>(
-      "SELECT id, name FROM roles WHERE LOWER(name) = ?",
-      [roleInput]
-    );
-
-    if (rows.length === 0) {
-      return res.status(400).render("signup", {
-        error: `Role "${roleInput}" does not exist.`
-      });
-    }
-
-    const roleId = rows[0].id;
-
-    // Hash password
-    const passwordHash = await bcrypt.hash(password, 10);
-
-    // Create user
-    await pool.query(
-      `INSERT INTO users (username, role_id, email, password_hash)
-       VALUES (?, ?, ?, ?)`,
-      [username, roleId, email, passwordHash]
-    );
-
-    // Signup successful
-    return res.redirect("/admin/login");
-
-  } catch (err: any) {
-    console.error("Signup error:", err);
-
-    // Handle MySQL duplicate key error
-    if (err && (err.code === "ER_DUP_ENTRY" || err.errno === 1062)) {
-      return res.status(400).render("signup", {
-        error: "Username or email is already registered."
-      });
-    }
-
-    return res.status(500).render("signup", {
-      error: "Something went wrong during signup. Please try again."
-    });
-  }
-};
-
 
 const login = async (
   req: Request<{}, {}, LoginBody>,
@@ -146,7 +74,6 @@ const logout = (req: Request, res: Response) => {
 };
 
 export default {
-  signup,
   login,
   logout
 };
