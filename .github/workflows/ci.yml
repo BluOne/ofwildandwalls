@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+
   pull_request:
     branches:
       - main
@@ -13,14 +14,15 @@ env:
 
 jobs:
 
-  # =========================
-  # BUILD / TEST
-  # =========================
+  # ==========================================
+  # BUILD JOB
+  # ==========================================
   build:
     name: Build Application
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout source
         uses: actions/checkout@v4
 
@@ -33,57 +35,66 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: TypeScript Build
+      - name: Build application
         run: npm run build
 
-      - name: Type Check
-        run: npm run typecheck
 
-
-  # =========================
-  # DEPLOY TO EC2
-  # =========================
+  # ==========================================
+  # DEPLOY JOB
+  # ==========================================
   deploy:
     name: Deploy to EC2
     needs: build
     runs-on: ubuntu-latest
 
+    # Deploy only when code is pushed to main
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
 
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.3
+
         with:
           host: ${{ secrets.PROD_SERVER_IP }}
           username: ${{ secrets.PROD_SERVER_USER }}
           key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
 
           script: |
+
             set -e
 
-            echo "================================="
+            echo "========================================="
             echo "Starting deployment"
-            echo "================================="
+            echo "========================================="
 
+            # Application directory
             cd /var/www/html/wild-o-photo
 
             echo "Current directory:"
             pwd
 
-            echo "Fetching latest code..."
+            echo "========================================="
+            echo "Fetching latest code from GitHub"
+            echo "========================================="
+
             git fetch origin
 
-            echo "Resetting to latest main..."
+            echo "========================================="
+            echo "Deploying latest main branch"
+            echo "========================================="
+
             git reset --hard origin/main
 
-            echo "Loading Node.js 22..."
+            echo "========================================="
+            echo "Loading Node.js 22"
+            echo "========================================="
+
             export NVM_DIR="/home/ubuntu/.nvm"
 
-            if [ -s "$NVM_DIR/nvm.sh" ]; then
-              source "$NVM_DIR/nvm.sh"
-              nvm use 22
-            fi
+            source "$NVM_DIR/nvm.sh"
+
+            nvm use 22
 
             echo "Node version:"
             node -v
@@ -91,21 +102,66 @@ jobs:
             echo "NPM version:"
             npm -v
 
-            echo "Installing dependencies..."
+            echo "========================================="
+            echo "Installing dependencies"
+            echo "========================================="
+
             npm ci
 
-            echo "Building application..."
+            echo "========================================="
+            echo "Building application"
+            echo "========================================="
+
             npm run build
 
-            echo "Restarting PM2 application..."
+            echo "========================================="
+            echo "Restarting PM2 application"
+            echo "========================================="
+
             pm2 restart wild-o-photo --update-env
 
-            echo "Saving PM2 configuration..."
+            echo "========================================="
+            echo "Saving PM2 configuration"
+            echo "========================================="
+
             pm2 save
 
-            echo "Checking PM2 status..."
+            echo "========================================="
+            echo "Checking PM2 status"
+            echo "========================================="
+
             pm2 status
 
-            echo "================================="
+            echo "========================================="
+            echo "Testing Nginx configuration"
+            echo "========================================="
+
+            sudo nginx -t
+
+            echo "========================================="
+            echo "Restarting Nginx"
+            echo "========================================="
+
+            sudo systemctl restart nginx
+
+            echo "========================================="
+            echo "Checking Nginx status"
+            echo "========================================="
+
+            sudo systemctl status nginx --no-pager
+
+            echo "========================================="
+            echo "Final PM2 status"
+            echo "========================================="
+
+            pm2 status
+
+            echo "========================================="
+            echo "Final Nginx status"
+            echo "========================================="
+
+            sudo systemctl is-active nginx
+
+            echo "========================================="
             echo "Deployment completed successfully"
-            echo "================================="
+            echo "========================================="
