@@ -64,15 +64,13 @@ const slugFromBody = (req: Request): { slug: string; auto: boolean } => ({
   auto: req.body.slug_auto === "1",
 });
 
-const CAP_MAX_LENGTH = 22;
-
 // "" when the form is valid, otherwise the message to show above it.
 // Mirrors the `required` fields in photo-form.ejs.
 const photoFormError = (req: Request, hasImage: boolean): string => {
-  const cap = String(req.body.cap || "").trim();
+  const title = String(req.body.title || "").trim();
   const missing: string[] = [];
 
-  if (!cap) missing.push("hover caption");
+  if (!title) missing.push("panel title");
   if (!slugify(req.body.slug || "")) missing.push("slug");
   if (!hasImage) missing.push("image");
   if (!String(req.body.alt || "").trim()) missing.push("alt text");
@@ -86,7 +84,6 @@ const photoFormError = (req: Request, hasImage: boolean): string => {
   if (!req.body.country_id) missing.push("country and state");
 
   if (missing.length) return `Please fill in: ${missing.join(", ")}.`;
-  if (cap.length > CAP_MAX_LENGTH) return `Hover caption must be ${CAP_MAX_LENGTH} characters or fewer.`;
   return "";
 };
 

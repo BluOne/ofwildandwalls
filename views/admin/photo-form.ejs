@@ -45,12 +45,22 @@
             <section class="card p-5">
               <div class="kicker mb-3.5">Core details</div>
               <div class="grid grid-cols-2 gap-3.5">
+                <label class="label">Panel title <span class="text-red-500">*</span>
+                  <input class="field mt-1.5" name="title" value="<%= photo.title %>" placeholder="Ridgeline, Noon" required>
+                </label>
+                <label class="label">Slug <span class="text-red-500">*</span>
+                  <input class="field mt-1.5" id="slug-input" name="slug" value="<%= photo.slug %>" placeholder="morning-patrol" autocomplete="off" spellcheck="false" required>
+                  <%# "1" while the slug follows the panel title automatically, "0" once
+                      it has been typed by hand. An existing photo starts at "0" so
+                      editing its panel title never silently changes its page address. %>
+                  <input type="hidden" id="slug-auto" name="slug_auto" value="<%= typeof slugAuto !== 'undefined' ? slugAuto : ((!isEdit && !photo.slug) ? '1' : '0') %>">
+                  <span id="slug-hint" class="mt-1 block text-[11px] font-normal text-mute"></span>
+                </label>
                 <label class="label">
                     <div class="flex items-center justify-between">
                        <span>
-                            Hover caption <span class="text-red-500">*</span>
+                            Hover caption
                            </span>
-                            <span class="text-[11px] text-mute">22 characters max</span>
                               </div>
 
                       <input
@@ -58,21 +68,8 @@
                        name="cap"
                         value="<%= photo.cap %>"
                           placeholder="Morning Patrol"
-                           maxlength="22"
-                           required
                                    >
                                    </label>
-                <label class="label">Slug <span class="text-red-500">*</span>
-                  <input class="field mt-1.5" id="slug-input" name="slug" value="<%= photo.slug %>" placeholder="morning-patrol" autocomplete="off" spellcheck="false" required>
-                  <%# "1" while the slug follows the caption automatically, "0" once
-                      it has been typed by hand. An existing photo starts at "0" so
-                      editing its caption never silently changes its page address. %>
-                  <input type="hidden" id="slug-auto" name="slug_auto" value="<%= typeof slugAuto !== 'undefined' ? slugAuto : ((!isEdit && !photo.slug) ? '1' : '0') %>">
-                  <span id="slug-hint" class="mt-1 block text-[11px] font-normal text-mute"></span>
-                </label>
-                <label class="label">Panel title
-                  <input class="field mt-1.5" name="title" value="<%= photo.title %>" placeholder="Ridgeline, Noon">
-                </label>
                 <label class="label">Reference
                   <input class="field mt-1.5" name="ref" value="<%= photo.ref %>" placeholder="HR.01 / 05">
                 </label>
@@ -325,8 +322,7 @@
 
     function source() {
       const file = fileInput && fileInput.files && fileInput.files[0];
-      return (capInput && capInput.value) ||
-        (titleInput && titleInput.value) ||
+      return (titleInput && titleInput.value) ||
         (file ? file.name.replace(/\.[^.]+$/, '') : '');
     }
 
@@ -337,9 +333,9 @@
     function render() {
       if (isAuto()) {
         slugInput.value = slugify(source());
-        hint.textContent = 'Filled in from the caption. Type here to set your own.';
+        hint.textContent = 'Filled in from the panel title. Type here to set your own.';
       } else {
-        hint.textContent = 'Set by hand. Clear it to fill it in from the caption again.';
+        hint.textContent = 'Set by hand. Clear it to fill it in from the panel title again.';
       }
     }
 
@@ -348,8 +344,8 @@
     slugInput.addEventListener('input', function() {
       autoInput.value = slugInput.value.trim() === '' ? '1' : '0';
       hint.textContent = isAuto()
-        ? 'Will fill in from the caption.'
-        : 'Set by hand. Clear it to fill it in from the caption again.';
+        ? 'Will fill in from the panel title.'
+        : 'Set by hand. Clear it to fill it in from the panel title again.';
     });
 
     slugInput.addEventListener('blur', function() {
@@ -364,9 +360,9 @@
       }
     });
 
-    [capInput, titleInput].forEach(function(el) {
-      if (el) el.addEventListener('input', function() { if (isAuto()) render(); });
-    });
+    if (titleInput) {
+      titleInput.addEventListener('input', function() { if (isAuto()) render(); });
+    }
 
     if (fileInput) fileInput.addEventListener('change', function() { if (isAuto()) render(); });
     if (dropZone) dropZone.addEventListener('drop', function() { if (isAuto()) render(); });
