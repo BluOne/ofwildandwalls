@@ -58,18 +58,23 @@
                        name="cap"
                         value="<%= photo.cap %>"
                           placeholder="Morning Patrol"
-                           required
                            maxlength="22"
+                           required
                                    >
                                    </label>
                 <label class="label">Slug <span class="text-red-500">*</span>
-                  <input class="field mt-1.5" name="slug" value="<%= photo.slug %>" placeholder="morning-patrol" required>
+                  <input class="field mt-1.5" id="slug-input" name="slug" value="<%= photo.slug %>" placeholder="morning-patrol" autocomplete="off" spellcheck="false" required>
+                  <%# "1" while the slug follows the caption automatically, "0" once
+                      it has been typed by hand. An existing photo starts at "0" so
+                      editing its caption never silently changes its page address. %>
+                  <input type="hidden" id="slug-auto" name="slug_auto" value="<%= typeof slugAuto !== 'undefined' ? slugAuto : ((!isEdit && !photo.slug) ? '1' : '0') %>">
+                  <span id="slug-hint" class="mt-1 block text-[11px] font-normal text-mute"></span>
                 </label>
-                <label class="label">Panel title <span class="text-red-500">*</span>
-                  <input class="field mt-1.5" name="title" value="<%= photo.title %>" placeholder="Ridgeline, Noon" required>
+                <label class="label">Panel title
+                  <input class="field mt-1.5" name="title" value="<%= photo.title %>" placeholder="Ridgeline, Noon">
                 </label>
-                <label class="label">Reference <span class="text-red-500">*</span>
-                  <input class="field mt-1.5" name="ref" value="<%= photo.ref %>" placeholder="HR.01 / 05" required>
+                <label class="label">Reference
+                  <input class="field mt-1.5" name="ref" value="<%= photo.ref %>" placeholder="HR.01 / 05">
                 </label>
                 <label class="label">Category <span class="text-red-500">*</span>
                   <select class="field mt-1.5" name="category_id" required>
@@ -117,15 +122,15 @@
                   </select>
                   <input type="hidden" id="state-hidden" name="state" value="<%= photo.state || '' %>">
                 </label>
-                <label class="label">Location <span class="text-red-500">*</span>
-                  <input class="field mt-1.5" name="location" value="<%= photo.location || '' %>" placeholder="Spiti, Himachal Pradesh" required>
+                <label class="label">Location
+                  <input class="field mt-1.5" name="location" value="<%= photo.location || '' %>" placeholder="Spiti, Himachal Pradesh">
                 </label>
-                <label class="label col-span-2">Settings (Field Data) <span class="text-red-500">*</span>
-                  <input class="field mt-1.5" name="settings" value="<%= photo.settings || '' %>" placeholder="1/125 · f/11 · ISO 100" required>
+                <label class="label col-span-2">Settings (Field Data)
+                  <input class="field mt-1.5" name="settings" value="<%= photo.settings || '' %>" placeholder="1/125 · f/11 · ISO 100">
                 </label>
               </div>
-              <label class="label mt-3.5">About the photo <span class="text-red-500">*</span>
-                <textarea class="field mt-1.5 resize-y" name="about" rows="3" placeholder="One or two lines about the moment." required><%= photo.about %></textarea>
+              <label class="label mt-3.5">About the photo
+                <textarea class="field mt-1.5 resize-y" name="about" rows="3" placeholder="One or two lines about the moment."><%= photo.about %></textarea>
               </label>
               <label class="label mt-3.5">Alternate note
                 <textarea class="field mt-1.5 resize-y" name="altNote" rows="2" placeholder="The line that sits under the rule."><%= photo.altNote %></textarea>
@@ -135,7 +140,7 @@
 
           <div class="grid gap-4">
             <section class="card p-5">
-              <div class="kicker mb-3.5">File</div>
+              <div class="kicker mb-3.5">File <span class="text-red-500">*</span></div>
               <div id="image-preview-container" class="<%= photo.src ? '' : 'hidden' %> mb-3 aspect-[3/2] w-full overflow-hidden rounded-2xl bg-[#e6e0d7]">
                 <img id="image-preview" src="<%= photo.src || '' %>" alt="<%= photo.alt || '' %>" class="block h-full w-full object-cover">
               </div>
@@ -148,6 +153,7 @@
                   <input type="file" id="photo-file-input" name="photo" accept="image/jpeg,image/png,image/webp" class="hidden">
                 </label>
               </div>
+              <p id="photo-file-error" class="mt-2 hidden text-[12px] font-medium text-red-600" role="alert">Choose an image for this photo.</p>
 
               <input type="hidden" name="src" value="<%= photo.src %>">
               <label class="label mt-3.5">Alt text <span class="text-red-500">*</span>
@@ -265,6 +271,107 @@
         syncStateHidden();
       }
     }
+  })();
+</script>
+
+<script>
+  (function() {
+    const slugInput = document.getElementById('slug-input');
+    const autoInput = document.getElementById('slug-auto');
+    const hint = document.getElementById('slug-hint');
+    const capInput = document.querySelector('input[name="cap"]');
+    const titleInput = document.querySelector('input[name="title"]');
+    const fileInput = document.getElementById('photo-file-input');
+    const dropZone = document.getElementById('drop-zone');
+
+    if (!slugInput || !autoInput) return;
+
+    // The file input is hidden behind the drop zone, and a browser can't
+    // point its "required" bubble at a hidden field — so the image is
+    // checked here instead, alongside the browser's own check of the rest.
+    const form = document.getElementById('photo-form');
+    const existingSrc = document.querySelector('input[name="src"]');
+    const fileError = document.getElementById('photo-file-error');
+
+    function hasImage() {
+      return (fileInput && fileInput.files && fileInput.files.length > 0) ||
+        (existingSrc && existingSrc.value);
+    }
+
+    function showFileError(show) {
+      fileError.classList.toggle('hidden', !show);
+      dropZone.classList.toggle('border-red-400', show);
+      dropZone.classList.toggle('border-[#d4cabb]', !show);
+    }
+
+    form.querySelectorAll('button[type="submit"]').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        if (hasImage()) return;
+        e.preventDefault();
+        showFileError(true);
+        // Still flag any other empty required field, then bring the image
+        // message into view if the other fields are all filled in.
+        if (form.reportValidity()) dropZone.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    });
+
+    if (fileInput) fileInput.addEventListener('change', function() { if (hasImage()) showFileError(false); });
+    if (dropZone) dropZone.addEventListener('drop', function() { if (hasImage()) showFileError(false); });
+
+    // Must match slugify() in src/controllers/photoController.ts.
+    function slugify(s) {
+      return String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    }
+
+    function source() {
+      const file = fileInput && fileInput.files && fileInput.files[0];
+      return (capInput && capInput.value) ||
+        (titleInput && titleInput.value) ||
+        (file ? file.name.replace(/\.[^.]+$/, '') : '');
+    }
+
+    function isAuto() {
+      return autoInput.value === '1';
+    }
+
+    function render() {
+      if (isAuto()) {
+        slugInput.value = slugify(source());
+        hint.textContent = 'Filled in from the caption. Type here to set your own.';
+      } else {
+        hint.textContent = 'Set by hand. Clear it to fill it in from the caption again.';
+      }
+    }
+
+    // While typing, an emptied field only switches back to automatic —
+    // it refills on blur, so clearing it to retype isn't fought mid-edit.
+    slugInput.addEventListener('input', function() {
+      autoInput.value = slugInput.value.trim() === '' ? '1' : '0';
+      hint.textContent = isAuto()
+        ? 'Will fill in from the caption.'
+        : 'Set by hand. Clear it to fill it in from the caption again.';
+    });
+
+    slugInput.addEventListener('blur', function() {
+      if (isAuto()) {
+        render();
+      } else {
+        slugInput.value = slugify(slugInput.value);
+        if (!slugInput.value) {
+          autoInput.value = '1';
+          render();
+        }
+      }
+    });
+
+    [capInput, titleInput].forEach(function(el) {
+      if (el) el.addEventListener('input', function() { if (isAuto()) render(); });
+    });
+
+    if (fileInput) fileInput.addEventListener('change', function() { if (isAuto()) render(); });
+    if (dropZone) dropZone.addEventListener('drop', function() { if (isAuto()) render(); });
+
+    render();
   })();
 </script>
 

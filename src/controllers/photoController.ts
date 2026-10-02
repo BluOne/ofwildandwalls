@@ -38,7 +38,57 @@ interface DBPhotoRow extends RowDataPacket {
 const slugify = (s: string): string =>
   String(s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
+// `base`, or `base-2`, `base-3`, ... — the first one no other photo uses.
+// excludeId skips the photo being edited, so it can keep its own slug.
+// slugify() only emits [a-z0-9-], so `base` is safe inside LIKE.
+const uniqueSlug = async (base: string, excludeId: number | null = null): Promise<string> => {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    "SELECT slug FROM photos WHERE (slug = ? OR slug LIKE ?) AND (? IS NULL OR id <> ?)",
+    [base, `${base}-%`, excludeId, excludeId]
+  );
+  const taken = new Set(rows.map(r => String(r.slug)));
+
+  if (!taken.has(base)) return base;
+
+  let n = 2;
+  while (taken.has(`${base}-${n}`)) n++;
+  return `${base}-${n}`;
+};
+
+// The slug the form sent, and whether it was filled in automatically from the
+// caption (slug_auto). Only an automatic slug is de-duplicated; a hand-typed
+// one that clashes is reported back to the form, so it never changes behind
+// your back.
+const slugFromBody = (req: Request): { slug: string; auto: boolean } => ({
+  slug: slugify(req.body.slug || ""),
+  auto: req.body.slug_auto === "1",
+});
+
 const CAP_MAX_LENGTH = 22;
+
+// "" when the form is valid, otherwise the message to show above it.
+// Mirrors the `required` fields in photo-form.ejs.
+const photoFormError = (req: Request, hasImage: boolean): string => {
+  const cap = String(req.body.cap || "").trim();
+  const missing: string[] = [];
+
+  if (!cap) missing.push("hover caption");
+  if (!slugify(req.body.slug || "")) missing.push("slug");
+  if (!hasImage) missing.push("image");
+  if (!String(req.body.alt || "").trim()) missing.push("alt text");
+  if (!String(req.body.date || "").trim()) missing.push("date");
+  if (!req.body.category_id) missing.push("category");
+  if (!req.body.collection_id) missing.push("collection");
+  if (!req.body.camera_id) missing.push("camera");
+  if (!req.body.lens_id) missing.push("lens");
+  // The State / Region select posts the countries-table row id as
+  // country_id, so one chosen state covers both country and state.
+  if (!req.body.country_id) missing.push("country and state");
+
+  if (missing.length) return `Please fill in: ${missing.join(", ")}.`;
+  if (cap.length > CAP_MAX_LENGTH) return `Hover caption must be ${CAP_MAX_LENGTH} characters or fewer.`;
+  return "";
+};
 
 const asArray = (v: unknown): string[] =>
   v === undefined ? [] : Array.isArray(v) ? (v as string[]) : [v as string];
@@ -310,11 +360,53 @@ const getEditPhotoForm = async (req: Request, res: Response) => {
   }
 };
 
+// Re-shows the add/edit form with what was submitted and an error above it.
+const renderPhotoFormError = async (
+  req: Request,
+  res: Response,
+  status: number,
+  mode: "add" | "edit",
+  src: string,
+  error: string
+) => {
+  const photo = photoFromBody(req);
+  photo.src = src || photo.src;
+
+  const [catRows] = await pool.query<RowDataPacket[]>("SELECT id, name AS title FROM categories ORDER BY id ASC");
+  const [collRows] = await pool.query<RowDataPacket[]>("SELECT id, name AS title, description FROM collections ORDER BY id ASC");
+  const [camRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM cameras ORDER BY id ASC");
+  const [lensRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM lenses ORDER BY id ASC");
+  const [countryRows] = await pool.query<RowDataPacket[]>("SELECT id, country, state FROM countries ORDER BY country ASC, state ASC");
+
+  return res.status(status).render("photo-form", {
+    nav: mode === "add" ? "add" : "photos",
+    mode,
+    photo,
+    slugAuto: req.body.slug_auto === "1" ? "1" : "0",
+    ...(mode === "edit"
+      ? { originalSlug: req.params.slug, returnPage: req.body.page || "", returnSearch: req.body.search || "" }
+      : {}),
+    categories: catRows,
+    collections: collRows,
+    cameras: camRows,
+    lenses: lensRows,
+    countries: countryRows,
+    error
+  });
+};
+
 const createPhoto = async (req: Request, res: Response) => {
   let s3Key = "";
   let photoUrl = req.body.src || "";
 
   try {
+    // Checked before the S3 upload, so a rejected form leaves no stray file.
+    const invalid = photoFormError(req, Boolean(req.file || req.body.src));
+
+    if (invalid) {
+      return renderPhotoFormError(req, res, 400, "add", photoUrl, invalid);
+    }
+
     if (req.file) {
       const file = req.file;
       s3Key = `photos/${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
@@ -333,15 +425,9 @@ const createPhoto = async (req: Request, res: Response) => {
       photoUrl = `https://${bucketName}.s3.${region}.amazonaws.com/${s3Key}`;
     }
 
-  const cap = String(req.body.cap || "").trim();
-
-if (!cap || cap.length > CAP_MAX_LENGTH) {
-  return res
-    .status(400)
-    .send(`Hover caption must be ${CAP_MAX_LENGTH} characters or fewer.`);
-}
-
-const slug = slugify(req.body.slug || cap);
+    const cap = String(req.body.cap || "").trim();
+    const requested = slugFromBody(req);
+    const slug = requested.auto ? await uniqueSlug(requested.slug) : requested.slug;
     const title = (req.body.title || cap).trim();
     const ref = (req.body.ref || "").trim();
     const category_id = req.body.category_id ? parseInt(req.body.category_id, 10) : null;
@@ -361,10 +447,6 @@ const slug = slugify(req.body.slug || cap);
     const live = req.body.live !== "draft";
     const metadata = JSON.stringify(readMeta(req.body));
 
-    if (!slug) {
-      return res.redirect("/admin/photos/new");
-    }
-
     await pool.query(
       `INSERT INTO photos (
         title, cap, slug, ref, url, s3_key, alt, category_id, collection_id, camera_id, lens_id, country_id, state, date, description, l, t, w, h, live, metadata, alt_note
@@ -376,24 +458,8 @@ const slug = slugify(req.body.slug || cap);
   } catch (error: any) {
     console.error("Error creating photo:", error);
     if (error && (error.code === "ER_DUP_ENTRY" || error.errno === 1062)) {
-      const photo = photoFromBody(req);
-      photo.src = photoUrl || photo.src;
-      const [catRows] = await pool.query<RowDataPacket[]>("SELECT id, name AS title FROM categories ORDER BY id ASC");
-      const [collRows] = await pool.query<RowDataPacket[]>("SELECT id, name AS title FROM collections ORDER BY id ASC");
-      const [camRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM cameras ORDER BY id ASC");
-      const [lensRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM lenses ORDER BY id ASC");
-      const [countryRows] = await pool.query<RowDataPacket[]>("SELECT id, country, state FROM countries ORDER BY country ASC, state ASC");
-      return res.status(409).render("photo-form", {
-        nav: "add",
-        mode: "add",
-        photo,
-        categories: catRows,
-        collections: collRows,
-        cameras: camRows,
-        lenses: lensRows,
-        countries: countryRows,
-        error: `A photo with slug "${photo.slug}" already exists. Please choose a different slug.`
-      });
+      return renderPhotoFormError(req, res, 409, "add", photoUrl,
+        `A photo with slug "${slugify(req.body.slug || "")}" already exists. Please choose a different slug.`);
     }
     res.status(500).send("Photo upload failed!");
   }
@@ -414,6 +480,13 @@ const updatePhoto = async (req: Request, res: Response) => {
     s3Key = existing.s3_key || "";
     photoUrl = existing.url || req.body.src || "";
 
+    // Checked before the S3 upload, so a rejected form leaves no stray file.
+    const invalid = photoFormError(req, Boolean(req.file || photoUrl || s3Key));
+
+    if (invalid) {
+      return renderPhotoFormError(req, res, 400, "edit", photoUrl, invalid);
+    }
+
     if (req.file) {
       const file = req.file;
       s3Key = `photos/${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
@@ -432,15 +505,17 @@ const updatePhoto = async (req: Request, res: Response) => {
       photoUrl = `https://${bucketName}.s3.${region}.amazonaws.com/${s3Key}`;
     }
 
-  const cap = String(req.body.cap || "").trim();
+    const cap = String(req.body.cap || "").trim();
 
-if (!cap || cap.length > CAP_MAX_LENGTH) {
-  return res
-    .status(400)
-    .send(`Hover caption must be ${CAP_MAX_LENGTH} characters or fewer.`);
-}
+    // An existing photo keeps its slug unless it's explicitly changed, so
+    // editing other fields never moves its page address.
+    const requested = slugFromBody(req);
+    let slug = requested.slug;
 
-const slug = slugify(req.body.slug || cap) || existing.slug;
+    if (slug !== existing.slug && requested.auto) {
+      slug = await uniqueSlug(slug, existing.id);
+    }
+
     const title = (req.body.title || cap).trim();
     const ref = (req.body.ref || "").trim();
     const category_id = req.body.category_id ? parseInt(req.body.category_id, 10) : null;
@@ -473,27 +548,8 @@ const slug = slugify(req.body.slug || cap) || existing.slug;
   } catch (error: any) {
     console.error("Error updating photo:", error);
     if (error && (error.code === "ER_DUP_ENTRY" || error.errno === 1062)) {
-      const photo = photoFromBody(req);
-      photo.src = photoUrl || photo.src;
-      const [catRows] = await pool.query<RowDataPacket[]>("SELECT id, name AS title FROM categories ORDER BY id ASC");
-      const [collRows] = await pool.query<RowDataPacket[]>("SELECT id, name AS title, description FROM collections ORDER BY id ASC");
-      const [camRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM cameras ORDER BY id ASC");
-      const [lensRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM lenses ORDER BY id ASC");
-      const [countryRows] = await pool.query<RowDataPacket[]>("SELECT id, country, state FROM countries ORDER BY country ASC, state ASC");
-      return res.status(409).render("photo-form", {
-        nav: "photos",
-        mode: "edit",
-        photo,
-        originalSlug: req.params.slug,
-        returnPage: req.body.page || "",
-        returnSearch: req.body.search || "",
-        categories: catRows,
-        collections: collRows,
-        cameras: camRows,
-        lenses: lensRows,
-        countries: countryRows,
-        error: `A photo with slug "${photo.slug}" already exists. Please choose a different slug.`
-      });
+      return renderPhotoFormError(req, res, 409, "edit", photoUrl,
+        `A photo with slug "${slugify(req.body.slug || "")}" already exists. Please choose a different slug.`);
     }
     res.status(500).send("Error updating photo");
   }
