@@ -427,6 +427,7 @@
         Object.keys(activeFilters).forEach(function (key) {
           if (activeFilters[key]) updateButtonLabel(key);
         });
+        updateResetButton();
         applyFiltersAfterLoading();
       });
     }

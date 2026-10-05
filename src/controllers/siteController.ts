@@ -161,7 +161,7 @@ const buildCameraMenu = (
   const brandMap: Record<string, { name: string; count: number }[]> = {};
   cameraRows.forEach(row => {
     const brand = row.brand || "Other";
-    const name = (row.model || "").trim();
+    const name = formatCameraName(row.brand, row.model, row.model);
     const count = countMap[row.id] || 0;
     if (!brandMap[brand]) brandMap[brand] = [];
     brandMap[brand].push({ name, count });

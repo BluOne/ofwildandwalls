@@ -8,7 +8,7 @@
         class="hidden md:flex fixed left-0 top-0 bottom-0 z-20 w-[14vw] min-w-[200px] max-w-[260px] flex-col justify-center select-none py-4 px-3">
 
         <%# Slider viewport %>
-          <div id="railViewport" class="overflow-hidden w-full max-h-[92vh] flex flex-col py-1">
+          <div id="railViewport" class="overflow-hidden w-full h-[92vh] flex flex-col py-1">
             <div id="railTrack" data-count="<%= photos.length %>"
               class="flex flex-col gap-[6px] transition-transform duration-500 ease-[cubic-bezier(.2,.7,.2,1)] py-1">
               <% var railLayout=[ [10, 80, 82], [10, 80, 82], [10, 80, 82], [10, 80, 82], [30, 80, 82], [48, 80, 82],
