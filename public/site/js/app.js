@@ -1251,13 +1251,9 @@
 
     var REAL_COUNT = realThumbs.length;
 
-    // Clone a few thumbs from each end and splice them in before/after the
-    // real list, so scrolling past either end keeps gliding into more
-    // thumbnails instead of stopping — the rail loops forever. Enough clones
-    // that a short burst of rapid steps never runs past the cloned runway
-    // before normalizeAfterSettle() below can quietly fold the index back
-    // into the real range.
-    var CLONE_COUNT = REAL_COUNT > 1 ? Math.min(6, REAL_COUNT) : 0;
+    // No cloning — the rail stops at the first/last thumb instead of
+    // wrapping around and looping forever.
+    var CLONE_COUNT = 0;
 
     realThumbs.forEach(function (el, i) {
       el.dataset.realIndex = String(i);
@@ -1484,38 +1480,6 @@
       });
     }
 
-    // If activeIdx is currently sitting on a cloned thumb, silently re-point
-    // it at the matching real thumb (identical photo, identical layout)
-    // *before* the next step is applied — not after some "settle" delay.
-    // Waiting for a quiet gap (the previous approach) broke down under a
-    // sustained scroll/held-arrow-key: each step kept pushing activeIdx one
-    // further into the clone zone, and since CLONE_COUNT is finite, a long
-    // enough burst ran clean off the end of the cloned runway and froze the
-    // rail (els[activeIdx] became undefined) until the user paused. Folding
-    // back just-in-time, on every step, means activeIdx can never drift more
-    // than one clone-hop from the real range, no matter how long or fast the
-    // scrolling continues.
-    function normalizeIfOutOfRange() {
-      if (CLONE_COUNT === 0) return;
-
-      if (activeIdx < REAL_START || activeIdx >= REAL_START + REAL_COUNT) {
-        var real =
-          (((activeIdx - REAL_START) % REAL_COUNT) + REAL_COUNT) % REAL_COUNT;
-
-        activeIdx = REAL_START + real;
-
-        updateDynamicLayout(false);
-
-        centerThumb(activeIdx, false);
-
-        // Force the browser to actually commit this untransitioned frame
-        // instead of batching it away, so the very next (animated) step
-        // below visibly glides from the corrected position, not from
-        // wherever the clone left off.
-        void track.offsetHeight;
-      }
-    }
-
     function setActivePhoto(idx) {
       if (els.length === 0) {
         return;
@@ -1537,9 +1501,12 @@
         return;
       }
 
-      normalizeIfOutOfRange();
+      var next = activeIdx + delta;
 
-      setActivePhoto(activeIdx + delta);
+      if (next < 0) next = 0;
+      if (next > els.length - 1) next = els.length - 1;
+
+      setActivePhoto(next);
     }
 
     function init() {
