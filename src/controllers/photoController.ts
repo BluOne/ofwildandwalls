@@ -75,8 +75,6 @@ const photoFormError = (req: Request, hasImage: boolean): string => {
   if (!hasImage) missing.push("image");
   if (!String(req.body.alt || "").trim()) missing.push("alt text");
   if (!String(req.body.date || "").trim()) missing.push("date");
-  if (!req.body.category_id) missing.push("category");
-  if (!req.body.collection_id) missing.push("collection");
   if (!req.body.camera_id) missing.push("camera");
   if (!req.body.lens_id) missing.push("lens");
   // The State / Region select posts the countries-table row id as
