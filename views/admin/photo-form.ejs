@@ -276,7 +276,6 @@
     const slugInput = document.getElementById('slug-input');
     const autoInput = document.getElementById('slug-auto');
     const hint = document.getElementById('slug-hint');
-    const capInput = document.querySelector('input[name="cap"]');
     const titleInput = document.querySelector('input[name="title"]');
     const fileInput = document.getElementById('photo-file-input');
     const dropZone = document.getElementById('drop-zone');
@@ -321,9 +320,7 @@
     }
 
     function source() {
-      const file = fileInput && fileInput.files && fileInput.files[0];
-      return (titleInput && titleInput.value) ||
-        (file ? file.name.replace(/\.[^.]+$/, '') : '');
+      return (titleInput && titleInput.value) || '';
     }
 
     function isAuto() {
@@ -364,9 +361,8 @@
       titleInput.addEventListener('input', function() { if (isAuto()) render(); });
     }
 
-    if (fileInput) fileInput.addEventListener('change', function() { if (isAuto()) render(); });
-    if (dropZone) dropZone.addEventListener('drop', function() { if (isAuto()) render(); });
-
+    // Deliberately not tied to the image: uploading or dropping a file
+    // must never change the slug, only the panel title does.
     render();
   })();
 </script>

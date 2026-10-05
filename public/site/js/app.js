@@ -1912,6 +1912,12 @@
     var EDGE_TOLERANCE = 4;
     var LOAD_MARGIN = 1200;
 
+    // The wrap-around (jump back by one copy at either end) only works with
+    // at least two identical copies side by side. With the single copy
+    // index.ejs renders, "one copy" is the whole strip: it would open at
+    // the far end, then bounce between both ends on every scroll event.
+    var looping = copies.length > 1;
+
     var copyWidth = 0;
 
     var pageSize = parseInt(strip.getAttribute("data-page-size"), 10) || 30;
@@ -2046,9 +2052,61 @@
       if (savedPosition !== null) {
         strip.scrollLeft = savedPosition;
       } else {
-        // First visit to Grid — keep the existing starting position.
-        strip.scrollLeft = copyWidth;
+        // First visit to Grid: the first photo, or — when looping — the
+        // start of the middle copy, so there's room to scroll both ways.
+        strip.scrollLeft = looping ? copyWidth : 0;
       }
+    }
+
+    // Each Grid photo is as wide as its image, so a photo still downloading
+    // (e.g. right after a hard refresh) is 0px wide and shoves the ones
+    // after it sideways once it arrives. Keep the strip invisible until the
+    // photos have loaded (capped, so one slow image can't hold it blank),
+    // then place it and fade it in.
+    var revealTimer = null;
+
+    function showGrid() {
+      var pending = Array.prototype.slice
+        .call(track.querySelectorAll("img"))
+        .filter(function (img) {
+          return !img.complete;
+        });
+
+      if (!pending.length) {
+        restoreGridScrollPosition();
+        return;
+      }
+
+      var left = pending.length;
+      var done = false;
+
+      strip.style.transition = "";
+      strip.style.opacity = "0";
+
+      function reveal() {
+        if (done) {
+          return;
+        }
+
+        done = true;
+        clearTimeout(revealTimer);
+        restoreGridScrollPosition();
+        strip.style.transition = "opacity .35s ease";
+        strip.style.opacity = "1";
+      }
+
+      pending.forEach(function (img) {
+        function settle() {
+          if (--left === 0) {
+            reveal();
+          }
+        }
+
+        img.addEventListener("load", settle, { once: true });
+        img.addEventListener("error", settle, { once: true });
+      });
+
+      revealTimer = setTimeout(reveal, 2000);
     }
 
     function loadNextPage() {
@@ -2095,7 +2153,7 @@
     }
 
     gridLoadAll = loadAllRemaining;
-    restoreGridScroll = restoreGridScrollPosition;
+    restoreGridScroll = showGrid;
 
     strip.addEventListener("scroll", function () {
       saveGridScrollPosition(strip);
@@ -2108,12 +2166,18 @@
 
       var maxScrollLeft = strip.scrollWidth - strip.clientWidth;
 
+      // New photos are appended at the end, so only the right end needs
+      // them — the left end does too only when it wraps around.
       if (
         hasMore &&
-        (strip.scrollLeft <= LOAD_MARGIN ||
-          strip.scrollLeft >= maxScrollLeft - LOAD_MARGIN)
+        (strip.scrollLeft >= maxScrollLeft - LOAD_MARGIN ||
+          (looping && strip.scrollLeft <= LOAD_MARGIN))
       ) {
         loadNextPage();
+      }
+
+      if (!looping) {
+        return;
       }
 
       if (strip.scrollLeft <= EDGE_TOLERANCE) {

@@ -32,6 +32,10 @@
        sliver — clip it here instead. Doesn't affect #gridStrip's own intentional
        horizontal scroll, which is a separate nested overflow-x:auto container. */
     html, body { overflow-x: hidden; }
+    /* Flow scrolls vertically, Grid fits one screen — without this, the
+       scrollbar appearing/disappearing on a Flow <-> Grid switch changes
+       the page width and jolts the header and photos sideways. */
+    html { scrollbar-gutter: stable; }
     html { -webkit-font-smoothing: antialiased; }
     ::selection { background: #141414; color: #fff; }
     :focus-visible { outline: 2px solid #141414; outline-offset: 3px; }
