@@ -77,9 +77,8 @@
                                       <input class="field mt-1.5" name="cap" value="<%= photo.cap %>"
                                         placeholder="Morning Patrol">
                                     </label>
-                                    <label class="label">Reference
-                                      <input class="field mt-1.5" name="ref" value="<%= photo.ref %>"
-                                        placeholder="HR.01 / 05">
+                                    <label class="label">Caption
+                                      <input class="field mt-1.5" name="ref" value="<%= photo.ref %>" placeholder="">
                                     </label>
                                     <label class="label">Category
                                       <select class="field mt-1.5" name="category_id">
@@ -152,10 +151,6 @@
                                   <label class="label mt-3.5">About the photo
                                     <textarea class="field mt-1.5 resize-y" name="about" rows="3"
                                       placeholder="One or two lines about the moment."><%= photo.about %></textarea>
-                                  </label>
-                                  <label class="label mt-3.5">Alternate note
-                                    <textarea class="field mt-1.5 resize-y" name="altNote" rows="2"
-                                      placeholder="The line that sits under the rule."><%= photo.altNote %></textarea>
                                   </label>
                                 </section>
                               </div>
@@ -254,10 +249,15 @@
       })();
     </script>
 
+    <div id="country-data" style="display:none;"
+      data-countries="<%= JSON.stringify(typeof countries !== 'undefined' ? countries : []) %>"
+      data-selected="<%= photo.country_id || '' %>"></div>
     <script>
       (function () {
-        const countries = <%- JSON.stringify(typeof countries !== "undefined" ? countries : []) %>;
-        const selectedCountryId = <%- photo.country_id ? Number(photo.country_id) : "null" %>;
+        const dataEl = document.getElementById('country-data');
+        const countries = dataEl && dataEl.getAttribute('data-countries') ? JSON.parse(dataEl.getAttribute('data-countries')) : [];
+        const selectedAttr = dataEl ? dataEl.getAttribute('data-selected') : '';
+        const selectedCountryId = selectedAttr ? Number(selectedAttr) : null;
         const countrySelect = document.getElementById('country-select');
         const stateSelect = document.getElementById('state-select');
         const stateHidden = document.getElementById('state-hidden');

@@ -30,7 +30,14 @@ router.get("/photos", authenticate, photoController.getPhotos);
 router.get("/photos/new", authenticate, photoController.getNewPhotoForm);
 router.get("/photos/:slug/edit", authenticate, photoController.getEditPhotoForm);
 
+import path from "path";
+
 router.post("/photos", authenticate, upload.single("photo"), photoController.createPhoto);
+router.get("/photos/import/failed", authenticate, photoController.getFailedImportsAPI);
+router.get("/photos/import/template", authenticate, (req, res) => {
+  res.download(path.join(process.cwd(), "Photo_Import_Template.csv"));
+});
+router.post("/photos/import", authenticate, upload.single("csv"), photoController.importPhotos);
 router.post("/photos/:slug", authenticate, upload.single("photo"), photoController.updatePhoto);
 router.post("/photos/:slug/toggle", authenticate, photoController.togglePhoto);
 router.post("/photos/:slug/delete", authenticate, photoController.deletePhoto);

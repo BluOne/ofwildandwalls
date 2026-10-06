@@ -175,6 +175,7 @@ const SELECT_SITE_PHOTOS = `
   SELECT
     p.*,
     cat.name AS cat_name,
+    cat.parent AS cat_parent,
     col.name AS col_name,
     col.description AS col_desc,
     cam.brand AS cam_brand,
@@ -314,6 +315,7 @@ const getPhotoDetail = async (req: Request, res: Response) => {
       const m = parseMeta(r.metadata);
       const gM = (k: string) => m[k] || m[k.toLowerCase()] || "";
       const catName = r.cat_name || "Photography";
+      const catParent = r.cat_parent || "";
       const colName = r.col_name || "";
       const camName = formatCameraName(r.cam_brand, r.cam_model, gM("Camera"));
       const lenName = formatLensName(r.len_brand, r.len_model, gM("Lens"));
@@ -331,6 +333,7 @@ const getPhotoDetail = async (req: Request, res: Response) => {
         date: r.date || "",
         location: gM("Location"),
         category: catName,
+        parentCategory: catParent,
         settings: gM("Settings"),
       };
     };
@@ -527,6 +530,7 @@ const getPhotoBySlugAPI = async (req: Request, res: Response) => {
       date: d.date || "",
       location: getMeta("Location"),
       category: (d as any).cat_name || "",
+      parentCategory: (d as any).cat_parent || "",
       settings: getMeta("Settings"),
     };
 

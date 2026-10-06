@@ -128,13 +128,17 @@ const deleteCategory = async (req: Request, res: Response) => {
     const search = req.query.search || "";
     const searchParam = search ? "&search=" + encodeURIComponent(String(search)) : "";
     const [rows] = await pool.query<DBCategoryRow[]>(
-      "SELECT id FROM categories ORDER BY id ASC"
+      "SELECT id, name AS title, parent FROM categories ORDER BY id ASC"
     );
 
     const id = parseInt(req.params.index, 10);
     const targetCategory = rows.find(r => r.id === id) || rows[id];
 
     if (targetCategory) {
+      const hasChildren = rows.some(r => r.parent === targetCategory.title);
+      if (hasChildren) {
+        return res.redirect("/admin/categories?error=Cannot+delete+category+because+it+has+one+or+more+subcategories.");
+      }
       await pool.query("DELETE FROM categories WHERE id = ?", [targetCategory.id]);
     }
 

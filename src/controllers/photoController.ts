@@ -1,5 +1,9 @@
 import pool from "../db";
 import { Request, Response } from "express";
+import { Readable } from "stream";
+import csvParser from "csv-parser";
+import axios from "axios";
+import fs from "fs";
 import { RowDataPacket } from "mysql2";
 import s3 from "../config/s3";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
@@ -628,11 +632,182 @@ const getPhotoBySlugAPI = async (req: Request, res: Response) => {
   }
 };
 
+const importPhotos = async (req: Request, res: Response) => {
+  if (!req.file || !req.file.buffer) {
+    return res.redirect("/admin/photos?error=Please+upload+a+CSV+file.");
+  }
+
+  const results: any[] = [];
+  Readable.from(req.file.buffer)
+    .pipe(csvParser())
+    .on('data', (data) => results.push(data))
+    .on('end', async () => {
+      let importedCount = 0;
+      let errorCount = 0;
+      const failedRows: any[] = [];
+      
+      try {
+        const [categories] = await pool.query<RowDataPacket[]>("SELECT id, name FROM categories");
+        const [collections] = await pool.query<RowDataPacket[]>("SELECT id, name FROM collections");
+        const [cameras] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM cameras");
+        const [lenses] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM lenses");
+        const [countries] = await pool.query<RowDataPacket[]>("SELECT id, country, state FROM countries");
+
+        const getByName = (arr: any[], name: string, field: string = 'name') => {
+          if (!name) return null;
+          const match = arr.find((item: any) => item[field].toLowerCase() === name.toLowerCase());
+          return match ? match.id : null;
+        };
+
+        const getCameraLensId = (arr: any[], name: string) => {
+          if (!name) return null;
+          const q = name.toLowerCase().trim();
+          const match = arr.find((item: any) => {
+            const fullName = ((item.brand ? item.brand + ' ' : '') + (item.model || '')).toLowerCase().trim();
+            return fullName === q || (item.model || '').toLowerCase().trim() === q;
+          });
+          return match ? match.id : null;
+        };
+
+        const getCountryId = (country: string, state: string) => {
+          if (!country && !state) return null;
+          const match = countries.find((c: any) => 
+            (c.country || "").toLowerCase() === (country || "").toLowerCase() &&
+            (c.state || "").toLowerCase() === (state || "").toLowerCase()
+          );
+          return match ? match.id : null;
+        };
+
+        for (const row of results) {
+          try {
+            const title = String(row.Title || "").trim();
+            const imageUrl = String(row['Image Path'] || "").trim();
+            if (!title || !imageUrl) continue;
+
+            // Handle Google Drive links
+            let downloadUrl = imageUrl;
+            const driveMatch = imageUrl.match(/drive\.google\.com\/file\/d\/([^\/]+)/);
+            if (driveMatch) {
+              downloadUrl = `https://drive.google.com/uc?export=download&id=${driveMatch[1]}`;
+            }
+
+            // Download image
+            const imageResponse = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
+            const mimeType = String(imageResponse.headers['content-type'] || 'image/jpeg');
+            
+            if (mimeType.includes('text/html')) {
+              throw new Error("Google Drive returned a login/HTML page instead of an image. Ensure the link permissions are set to 'Anyone with the link can view'.");
+            }
+            
+            const imageBuffer = imageResponse.data;
+            
+            // Upload to S3
+            const s3Key = `photos/${Date.now()}-${slugify(title)}.jpg`;
+            const s3Bucket = process.env.AWS_S3_BUCKET_NAME || "";
+            await s3.send(new PutObjectCommand({
+              Bucket: s3Bucket,
+              Key: s3Key,
+              Body: imageBuffer,
+              ContentType: mimeType,
+              CacheControl: "public, max-age=31536000, immutable",
+            }));
+
+            const requestedSlug = String(row.Slug || "").trim() || title;
+            const finalSlug = await uniqueSlug(slugify(requestedSlug));
+            
+            // Resolve IDs
+            const category_id = getByName(categories, row.Category);
+            const collection_id = getByName(collections, row.Collection);
+            const camera_id = getCameraLensId(cameras, row.Camera);
+            const lens_id = getCameraLensId(lenses, row.Lens);
+            const country_id = getCountryId(row.Country, row.State);
+
+            const meta: any[] = [];
+            if (row.Camera) meta.push({ key: "Camera", value: row.Camera });
+            if (row.Lens) meta.push({ key: "Lens", value: row.Lens });
+            if (row.Settings) meta.push({ key: "Settings", value: row.Settings });
+            if (row.Location) meta.push({ key: "Location", value: row.Location });
+            const metaJson = JSON.stringify(meta);
+
+            await pool.query(
+              `INSERT INTO photos (
+                title, cap, slug, ref, category_id, collection_id, camera_id, lens_id, country_id, 
+                state, date, description, alt_note, alt, s3_key, live, metadata, l, t, w, h
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                title,
+                row['Hover Caption'] || title,
+                finalSlug,
+                row.Caption || "",
+                category_id,
+                collection_id,
+                camera_id,
+                lens_id,
+                country_id,
+                row.State || "",
+                row.Date || "",
+                row.About || "",
+                row['Alt Note'] || "",
+                row['Alt Text'] || title,
+                s3Key,
+                1,
+                metaJson,
+                "0", "0", "0", "0"
+              ]
+            );
+
+            importedCount++;
+          } catch (e: any) {
+            console.error("Error processing row:", e);
+            const istTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+            failedRows.push({ time: istTime, row, error: e.message || String(e) });
+            errorCount++;
+          }
+        }
+
+        if (failedRows.length > 0) {
+          let allFailedRows = [];
+          if (fs.existsSync("failed_imports.json")) {
+            try {
+              const existingData = fs.readFileSync("failed_imports.json", "utf-8");
+              allFailedRows = JSON.parse(existingData);
+            } catch (e) {
+              console.error("Could not parse existing failed_imports.json");
+            }
+          }
+          allFailedRows = allFailedRows.concat(failedRows);
+          fs.writeFileSync("failed_imports.json", JSON.stringify(allFailedRows, null, 2));
+        }
+
+        res.redirect(`/admin/photos?flash=Imported+${importedCount}+photos` + (errorCount > 0 ? `+(Failed:+${errorCount},+check+failed_imports.json)` : ''));
+      } catch (err) {
+        console.error("Import error:", err);
+        res.redirect("/admin/photos?error=Error+processing+import.");
+      }
+    });
+};
+
+const getFailedImportsAPI = (req: Request, res: Response) => {
+  try {
+    if (fs.existsSync("failed_imports.json")) {
+      const data = fs.readFileSync("failed_imports.json", "utf-8");
+      res.setHeader("Content-Type", "application/json");
+      res.send(data);
+    } else {
+      res.json({ message: "No failed imports found." });
+    }
+  } catch (error) {
+    res.status(500).json({ error: "Failed to read file." });
+  }
+};
+
 export default {
   getPhotos,
   getNewPhotoForm,
   getEditPhotoForm,
   createPhoto,
+  importPhotos,
+  getFailedImportsAPI,
   updatePhoto,
   togglePhoto,
   deletePhoto,
