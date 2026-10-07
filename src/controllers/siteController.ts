@@ -322,25 +322,25 @@ const getPhotoDetail = async (req: Request, res: Response) => {
 
       return {
         kicker: catName,
-        title: r.cap || r.title || "",
+        title: r.title || r.cap || "",
         ref: r.ref || "",
         about: r.description || "",
         altNote: r.alt_note || "",
-        collection: r.col_desc || colName,
+        collection: r.col_desc || colName || "Unknown",
         collectionHref: "#",
         camera: camName,
         lens: lenName,
         date: r.date || "",
         location: gM("Location"),
-        category: catName,
-        parentCategory: catParent,
+        category: (catParent && catParent.trim().toLowerCase() !== "none") ? `${catParent} / ${catName}` : catName,
+        parentCategory: (catParent && catParent.trim().toLowerCase() !== "none") ? catParent : "",
         settings: gM("Settings"),
       };
     };
 
     const mapJoinedToSitePhoto = (r: any) => {
       const p = mapToSitePhoto(r, {});
-      p.category = r.cat_name || p.category;
+      p.category = (r.cat_parent && r.cat_parent.trim().toLowerCase() !== "none") ? `${r.cat_parent} / ${r.cat_name}` : (r.cat_name || p.category);
       p.collection = r.col_name || p.collection;
       p.aboutCollection = r.col_desc || p.aboutCollection;
       return p;

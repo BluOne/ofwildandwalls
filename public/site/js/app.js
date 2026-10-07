@@ -1415,7 +1415,7 @@
         }
 
         if (elCollection && th.dataset.collection !== undefined) {
-          elCollection.textContent = th.dataset.collection;
+          elCollection.textContent = th.dataset.collection || "Unknown";
         }
 
         if (elCamera && th.dataset.camera && th.dataset.lens) {
