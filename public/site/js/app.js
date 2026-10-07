@@ -2269,10 +2269,6 @@
         return 4;
       }
 
-      if (w <= 900) {
-        return 6;
-      }
-
       return 8;
     }
 
@@ -2285,6 +2281,50 @@
     var flowOcc = [];
     var flowRow = 0;
     var flowRowLeft = 0;
+    var flowPatternIndex = 0;
+
+    // Fixed Flow pattern (8 columns), measured from the reference design.
+    // Photos fill these slots in DOM order; after the last slot the whole
+    // block repeats FLOW_PATTERN_ROWS rows further down. row/col are grid
+    // cells, span 2 = large (2 cols x 2 rows), drop = offset within the
+    // row as a fraction of the row step.
+    var FLOW_PATTERN_ROWS = 9;
+    var FLOW_PATTERN = [
+      { row: 0, col: 2, span: 1, drop: 0 },
+      { row: 0, col: 5, span: 1, drop: 0 },
+      { row: 1, col: 0, span: 2, drop: 0 },
+      { row: 1, col: 3, span: 1, drop: 0 },
+      { row: 1, col: 4, span: 2, drop: 0 },
+      { row: 1, col: 7, span: 1, drop: 0 },
+      { row: 2, col: 6, span: 1, drop: 0 },
+      { row: 3, col: 1, span: 1, drop: 0.05 },
+      { row: 3, col: 2, span: 2, drop: 0 },
+      { row: 3, col: 6, span: 2, drop: 0 },
+      { row: 4, col: 0, span: 1, drop: 0 },
+      { row: 4, col: 4, span: 1, drop: 0 },
+      { row: 5, col: 1, span: 1, drop: 0 },
+      { row: 5, col: 3, span: 2, drop: 0 },
+      { row: 5, col: 7, span: 1, drop: 0 },
+      { row: 6, col: 0, span: 1, drop: 0 },
+      { row: 6, col: 5, span: 1, drop: 0.12 },
+      { row: 7, col: 1, span: 2, drop: 0 },
+      { row: 7, col: 5, span: 2, drop: 0 },
+    ];
+
+    function flowPlacePattern(a) {
+      var i = flowPatternIndex++;
+      var slot = FLOW_PATTERN[i % FLOW_PATTERN.length];
+      var cycle = Math.floor(i / FLOW_PATTERN.length);
+      var row = cycle * FLOW_PATTERN_ROWS + slot.row;
+
+      flowOccupy(row, slot.col, slot.span);
+
+      a._flow = { row: row, col: slot.col, span: slot.span, drop: slot.drop };
+      a.style.position = "absolute";
+
+      flowSizeTile(a);
+      flowWatchImage(a);
+    }
 
     function flowRowQuota(row) {
       var r = flowRng(row * 7919 + 17);
@@ -2402,6 +2442,11 @@
     }
 
     function flowPlace(a) {
+      if (flowCols === 8) {
+        flowPlacePattern(a);
+        return;
+      }
+
       var r = flowRng(flowSeed(a.getAttribute("data-slug") || ""));
       var span = r() < FLOW_LARGE_CHANCE ? 2 : 1;
       // A few tiles sit slightly below their row line, like the reference.
@@ -2455,6 +2500,7 @@
       flowGap = flowColWidth * FLOW_GAP_RATIO;
       flowRowStep = (flowColWidth + flowGap) * FLOW_ROW_RATIO;
       flowOcc = [];
+      flowPatternIndex = 0;
       flowStartRow(0);
 
       Array.prototype.slice
