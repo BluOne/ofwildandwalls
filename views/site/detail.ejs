@@ -28,7 +28,7 @@
                   data-category="<%= dData.category || 'WILDLIFE' %>"
                   data-settings="<%= dData.settings || 'f/2.8 · 1/1000s · ISO 100' %>"
                   style="margin-left:<%= lay[0] %>px; width:<%= lay[1] %>px; height:<%= lay[2] %>px;">
-                  <img src="<%= p.src %>" alt="<%= p.alt %>" loading="lazy" decoding="async" class="w-full h-full object-cover"<% if (p.color) { %> style="background-color: <%= p.color %>"<% } %>>
+                  <img src="<%= p.srcSmall || p.src %>" data-full="<%= p.src %>" alt="<%= p.alt %>" loading="lazy" decoding="async" class="w-full h-full object-cover"<% if (p.color) { %> style="background-color: <%= p.color %>"<% } %>>
                 </a>
                 <% }); %>
             </div>

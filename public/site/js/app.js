@@ -1985,8 +1985,22 @@
     document.addEventListener(
       "error",
       function (e) {
-        if (e.target.classList && e.target.classList.contains("photo-img")) {
-          markLoaded(e.target);
+        var img = e.target;
+
+        // An image with data-full (detail sidebar thumbnails) shows a resized
+        // copy; if that copy is missing or blocked, fall back to the
+        // original once instead of showing a broken image.
+        var full = img && img.getAttribute && img.getAttribute("data-full");
+
+        if (full && !img._usedFull && img.currentSrc !== full) {
+          img._usedFull = true;
+          img.removeAttribute("srcset");
+          img.src = full;
+          return;
+        }
+
+        if (img.classList && img.classList.contains("photo-img")) {
+          markLoaded(img);
         }
       },
       true,
