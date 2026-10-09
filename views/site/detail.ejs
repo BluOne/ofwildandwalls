@@ -17,7 +17,7 @@
                 var dData=p.details || details || {}; %>
                 <a href="/photo/<%= p.slug %><%= qs %>"
                   class="rail-thumb rail-in group block shrink-0 overflow-hidden transition-all duration-300 relative "
-                  data-src="<%= p.srcLarge || p.src %>" data-full="<%= p.src %>" data-alt="<%= p.alt %>" data-href="/photo/<%= p.slug %><%= qs %>"
+                  data-src="<%= p.src %>" data-full="<%= p.src %>" data-alt="<%= p.alt %>" data-href="/photo/<%= p.slug %><%= qs %>"
                   data-title="<%= dData.title || p.title || '' %>" data-kicker="<%= dData.kicker || 'LANDSCAPE' %>"
                   data-ref="<%= dData.ref || 'REF: WILD-' + (i + 101) %>" data-about="<%= dData.about || '' %>"
                   data-altnote="<%= dData.altNote || '' %>" data-collection="<%= dData.collection || '' %>"
@@ -28,7 +28,7 @@
                   data-category="<%= dData.category || 'WILDLIFE' %>"
                   data-settings="<%= dData.settings || 'f/2.8 · 1/1000s · ISO 100' %>"
                   style="margin-left:<%= lay[0] %>px; width:<%= lay[1] %>px; height:<%= lay[2] %>px;">
-                  <img src="<%= p.srcSmall || p.src %>" alt="<%= p.alt %>" loading="lazy" decoding="async" class="w-full h-full object-cover"<% if (p.color) { %> style="background-color: <%= p.color %>"<% } %>>
+                  <img src="<%= p.src %>" alt="<%= p.alt %>" loading="lazy" decoding="async" class="w-full h-full object-cover"<% if (p.color) { %> style="background-color: <%= p.color %>"<% } %>>
                 </a>
                 <% }); %>
             </div>
@@ -84,7 +84,7 @@
 
               <div class="photo-item group relative max-w-full max-h-[calc(100vh-140px)]">
 
-                <img id="mainPhoto" src="<%= photo.srcLarge || photo.src %>" data-full="<%= photo.src %>" alt="<%= photo.alt %>" fetchpriority="high"
+                <img id="mainPhoto" src="<%= photo.src %>" data-full="<%= photo.src %>" alt="<%= photo.alt %>" fetchpriority="high"
                   class="fade-up max-h-[calc(100vh-140px)] max-w-full w-auto h-auto object-contain block cursor-zoom-in">
 
 
