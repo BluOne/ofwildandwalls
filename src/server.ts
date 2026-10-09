@@ -5,6 +5,7 @@ import session from "express-session";
 
 import siteRouter from "./routes/site";
 import adminRouter from "./routes/admin";
+import { imageBaseUrl } from "./utils/imageVariants";
 
 const app = express();
 
@@ -13,6 +14,9 @@ const PORT = process.env.PORT
     : 3000;
 
 app.set("view engine", "ejs");
+
+// Image host (S3 or IMAGE_CDN_URL), preconnected in the site <head>.
+app.locals.imageOrigin = imageBaseUrl();
 
 app.set("views", [
     path.join(__dirname, "..", "views", "site"),

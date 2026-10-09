@@ -17,7 +17,7 @@
                 var dData=p.details || details || {}; %>
                 <a href="/photo/<%= p.slug %><%= qs %>"
                   class="rail-thumb rail-in group block shrink-0 overflow-hidden transition-all duration-300 relative "
-                  data-src="<%= p.src %>" data-alt="<%= p.alt %>" data-href="/photo/<%= p.slug %><%= qs %>"
+                  data-src="<%= p.srcLarge || p.src %>" data-full="<%= p.src %>" data-alt="<%= p.alt %>" data-href="/photo/<%= p.slug %><%= qs %>"
                   data-title="<%= dData.title || p.title || '' %>" data-kicker="<%= dData.kicker || 'LANDSCAPE' %>"
                   data-ref="<%= dData.ref || 'REF: WILD-' + (i + 101) %>" data-about="<%= dData.about || '' %>"
                   data-altnote="<%= dData.altNote || '' %>" data-collection="<%= dData.collection || '' %>"
@@ -28,7 +28,7 @@
                   data-category="<%= dData.category || 'WILDLIFE' %>"
                   data-settings="<%= dData.settings || 'f/2.8 · 1/1000s · ISO 100' %>"
                   style="margin-left:<%= lay[0] %>px; width:<%= lay[1] %>px; height:<%= lay[2] %>px;">
-                  <img src="<%= p.src %>" alt="<%= p.alt %>" loading="lazy" class="w-full h-full object-cover">
+                  <img src="<%= p.srcSmall || p.src %>" alt="<%= p.alt %>" loading="lazy" decoding="async" class="w-full h-full object-cover"<% if (p.color) { %> style="background-color: <%= p.color %>"<% } %>>
                 </a>
                 <% }); %>
             </div>
@@ -84,68 +84,9 @@
 
               <div class="photo-item group relative max-w-full max-h-[calc(100vh-140px)]">
 
-                <img id="mainPhoto" src="<%= photo.src %>" alt="<%= photo.alt %>"
+                <img id="mainPhoto" src="<%= photo.srcLarge || photo.src %>" data-full="<%= photo.src %>" alt="<%= photo.alt %>" fetchpriority="high"
                   class="fade-up max-h-[calc(100vh-140px)] max-w-full w-auto h-auto object-contain block cursor-zoom-in">
 
-                <!-- Cursor-following plus icon -->
-
-                <!-- Cursor-following plus icon -->
-
-                <span aria-hidden="true"
-                  class="photo-plus-cursor pointer-events-none absolute z-20 opacity-0 -translate-x-1/2 -translate-y-1/2">
-                  <span class="relative w-[68px] h-[68px] grid place-items-center">
-                    <!-- lens/shadow + broken circle -->
-                    <svg class="absolute inset-0 w-full h-full" viewBox="0 0 68 68" fill="none" aria-hidden="true">
-                      <defs>
-                        <!-- keeps the lens effect strictly inside the circle -->
-                        <clipPath id="lensClip">
-                          <circle cx="34" cy="34" r="32" />
-                        </clipPath>
-
-                        <!-- soft inner lens shadow -->
-                        <filter id="lensShadow" x="-50%" y="-50%" width="200%" height="200%">
-                          <feGaussianBlur stdDeviation="3" />
-                        </filter>
-                      </defs>
-
-                      <!-- lens effect -->
-                      <g clip-path="url(#lensClip)">
-                        <circle cx="34" cy="34" r="32.5" fill="rgba(255,255,255,0.055)" />
-
-                        <ellipse cx="27" cy="23" rx="0" ry="0" fill="rgba(255,255,255,0.29)" filter="url(#lensShadow)"
-                          transform="rotate(-35 27 23)" />
-
-                        <!-- soft inner edge -->
-                        <circle cx="34" cy="34" r="30" stroke="rgba(255,255,255,0.0)" stroke-width="5"
-                          filter="url(#lensShadow)" />
-                      </g>
-
-                      <!-- broken circle -->
-
-                      <!-- top -->
-                      <path d="M 22 3.5 A 30.5 30.5 0 0 1 46 3.5" stroke="rgba(255,255,255,0.75)" stroke-width="1.2"
-                        stroke-linecap="round" />
-
-                      <!-- right -->
-                      <path d="M 64.5 22 A 30.5 30.5 0 0 1 64.5 46" stroke="rgba(255,255,255,0.75)" stroke-width="1.2"
-                        stroke-linecap="round" />
-
-                      <!-- bottom -->
-                      <path d="M 46 64.5 A 30.5 30.5 0 0 1 22 64.5" stroke="rgba(255,255,255,0.75)" stroke-width="1.2"
-                        stroke-linecap="round" />
-
-                      <!-- left -->
-                      <path d="M 3.5 46 A 30.5 30.5 0 0 1 3.5 22" stroke="rgba(255,255,255,0.75)" stroke-width="1.2"
-                        stroke-linecap="round" />
-                    </svg>
-
-                    <!-- plus -->
-                    <svg class="relative w-[26px] h-[26px] text-white" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
-                      <path d="M12 5v14M5 12h14"></path>
-                    </svg>
-                  </span>
-                </span>
 
               </div>
 

@@ -8,6 +8,7 @@ import { RowDataPacket } from "mysql2";
 import s3 from "../config/s3";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import type { AdminPhoto, MetaItem } from "../types/admin";
+import { IMMUTABLE_CACHE, tryCreateImageVariants, type ImageVariantInfo } from "../utils/imageVariants";
 
 interface DBPhotoRow extends RowDataPacket {
   id: number;
@@ -397,6 +398,7 @@ const renderPhotoFormError = async (
 const createPhoto = async (req: Request, res: Response) => {
   let s3Key = "";
   let photoUrl = req.body.src || "";
+  let variants: ImageVariantInfo | null = null;
 
   try {
     // Checked before the S3 upload, so a rejected form leaves no stray file.
@@ -415,9 +417,12 @@ const createPhoto = async (req: Request, res: Response) => {
         Key: s3Key,
         Body: file.buffer,
         ContentType: file.mimetype,
+        CacheControl: IMMUTABLE_CACHE,
       });
 
       await s3.send(command);
+
+      variants = await tryCreateImageVariants(file.buffer, s3Key);
 
       const bucketName = process.env.AWS_S3_BUCKET_NAME || "";
       const region = process.env.AWS_REGION || "us-east-1";
@@ -448,9 +453,11 @@ const createPhoto = async (req: Request, res: Response) => {
 
     await pool.query(
       `INSERT INTO photos (
-        title, cap, slug, ref, url, s3_key, alt, category_id, collection_id, camera_id, lens_id, country_id, state, date, description, l, t, w, h, live, metadata, alt_note
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [title, cap, slug, ref, photoUrl, s3Key, alt, category_id, collection_id, camera_id, lens_id, country_id, state, date, about, l, t, w, h, live, metadata, altNote]
+        title, cap, slug, ref, url, s3_key, alt, category_id, collection_id, camera_id, lens_id, country_id, state, date, description, l, t, w, h, live, metadata, alt_note,
+        variant_base, variant_widths, img_width, img_height, img_color
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [title, cap, slug, ref, photoUrl, s3Key, alt, category_id, collection_id, camera_id, lens_id, country_id, state, date, about, l, t, w, h, live, metadata, altNote,
+        variants?.variant_base ?? null, variants?.variant_widths ?? null, variants?.img_width ?? null, variants?.img_height ?? null, variants?.img_color ?? null]
     );
 
     res.redirect("/admin/photos?flash=Photo+added");
@@ -467,6 +474,7 @@ const createPhoto = async (req: Request, res: Response) => {
 const updatePhoto = async (req: Request, res: Response) => {
   let s3Key = "";
   let photoUrl = req.body.src || "";
+  let variants: ImageVariantInfo | null = null;
 
   try {
     const targetSlug = req.params.slug;
@@ -495,9 +503,12 @@ const updatePhoto = async (req: Request, res: Response) => {
         Key: s3Key,
         Body: file.buffer,
         ContentType: file.mimetype,
+        CacheControl: IMMUTABLE_CACHE,
       });
 
       await s3.send(command);
+
+      variants = await tryCreateImageVariants(file.buffer, s3Key);
 
       const bucketName = process.env.AWS_S3_BUCKET_NAME || "";
       const region = process.env.AWS_REGION || "us-east-1";
@@ -540,6 +551,15 @@ const updatePhoto = async (req: Request, res: Response) => {
       WHERE slug = ?`,
       [title, cap, slug, ref, photoUrl, s3Key, alt, category_id, collection_id, camera_id, lens_id, country_id, state, date, about, l, t, w, h, live, metadata, targetSlug]
     );
+
+    // A new file replaces the old variants; a failed generation clears
+    // them so the site falls back to the new original, not the old copies.
+    if (req.file) {
+      await pool.query(
+        `UPDATE photos SET variant_base = ?, variant_widths = ?, img_width = ?, img_height = ?, img_color = ? WHERE slug = ?`,
+        [variants?.variant_base ?? null, variants?.variant_widths ?? null, variants?.img_width ?? null, variants?.img_height ?? null, variants?.img_color ?? null, slug]
+      );
+    }
 
     const page = req.body.page || "1";
     const search = req.body.search ? "&search=" + encodeURIComponent(String(req.body.search)) : "";
@@ -709,8 +729,10 @@ const importPhotos = async (req: Request, res: Response) => {
               Key: s3Key,
               Body: imageBuffer,
               ContentType: mimeType,
-              CacheControl: "public, max-age=31536000, immutable",
+              CacheControl: IMMUTABLE_CACHE,
             }));
+
+            const variants = await tryCreateImageVariants(Buffer.from(imageBuffer), s3Key);
 
             const requestedSlug = String(row.Slug || "").trim() || title;
             const finalSlug = await uniqueSlug(slugify(requestedSlug));
@@ -732,8 +754,9 @@ const importPhotos = async (req: Request, res: Response) => {
             await pool.query(
               `INSERT INTO photos (
                 title, cap, slug, ref, category_id, collection_id, camera_id, lens_id, country_id, 
-                state, date, description, alt_note, alt, s3_key, live, metadata, l, t, w, h
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                state, date, description, alt_note, alt, s3_key, live, metadata, l, t, w, h,
+                variant_base, variant_widths, img_width, img_height, img_color
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 title,
                 row['Hover Caption'] || title,
@@ -752,7 +775,12 @@ const importPhotos = async (req: Request, res: Response) => {
                 s3Key,
                 1,
                 metaJson,
-                "0", "0", "0", "0"
+                "0", "0", "0", "0",
+                variants?.variant_base ?? null,
+                variants?.variant_widths ?? null,
+                variants?.img_width ?? null,
+                variants?.img_height ?? null,
+                variants?.img_color ?? null
               ]
             );
 

@@ -1,6 +1,7 @@
 import pool from "../db";
 import { Request, Response } from "express";
 import { RowDataPacket } from "mysql2";
+import { cdnUrl, s3KeyUrl, siteImageFields } from "../utils/imageVariants";
 
 // ── DB row shapes ────────────────────────────────────────────────────────────
 
@@ -28,6 +29,11 @@ interface DBPhotoRow extends RowDataPacket {
   h: string;
   live: number | boolean;
   metadata: any;
+  variant_base?: string | null;
+  variant_widths?: string | null;
+  img_width?: number | null;
+  img_height?: number | null;
+  img_color?: string | null;
 }
 
 interface DBCameraRow extends RowDataPacket {
@@ -44,13 +50,9 @@ interface DBCollectionRow extends RowDataPacket {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const buildPhotoUrl = (row: DBPhotoRow): string => {
-  if (row.url) return row.url;
+  if (row.url) return cdnUrl(row.url);
   if (row.s3_key) {
-    const bucket = process.env.AWS_S3_BUCKET_NAME || "";
-    const region = process.env.AWS_REGION || "us-east-1";
-    return row.s3_key.startsWith("http")
-      ? row.s3_key
-      : `https://${bucket}.s3.${region}.amazonaws.com/${row.s3_key}`;
+    return row.s3_key.startsWith("http") ? cdnUrl(row.s3_key) : s3KeyUrl(row.s3_key);
   }
   return "";
 };
@@ -111,6 +113,9 @@ const mapToSitePhoto = (
     // identity
     slug: row.slug || "",
     src,
+    // resized WebP copies (srcset, srcSmall, srcLarge) + natural size and
+    // placeholder colour; all fall back to `src` / empty when missing
+    ...siteImageFields(row, src),
     alt: row.alt || "",
     cap: row.cap || row.title || "",
     title: row.title || row.cap || "",

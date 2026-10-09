@@ -252,6 +252,31 @@
     return String(str || "").replace(/"/g, "&quot;");
   }
 
+  /*
+   * <img> attributes for a photo from the API: the small resized copy as
+   * src, the srcset of resized WebP copies, natural width/height (so the
+   * browser reserves the right box) and async decoding. `sizes` is the
+   * expected display width. Falls back to the original when the photo has
+   * no resized copies yet.
+   */
+  function photoImgAttrs(p, sizes) {
+    var out = ' src="' + escAttr(p.srcSmall || p.src) + '"';
+
+    if (p.srcset) {
+      out += ' srcset="' + escAttr(p.srcset) + '" sizes="' + escAttr(sizes) + '"';
+    }
+
+    if (p.width && p.height) {
+      out += ' width="' + p.width + '" height="' + p.height + '"';
+    }
+
+    return out + ' alt="' + escAttr(p.alt) + '" loading="lazy" decoding="async"';
+  }
+
+  function photoAspect(p) {
+    return p.width && p.height ? p.width / p.height : 0;
+  }
+
   function itemRow(name, count) {
     return (
       '<button type="button" data-name="' +
@@ -1358,6 +1383,7 @@
         var alt = th.getAttribute("data-alt");
 
         mainPhoto.src = src;
+        mainPhoto.setAttribute("data-full", th.getAttribute("data-full") || src);
         mainPhoto.alt = alt || "";
 
         mainPhoto.style.animationDelay = "0s";
@@ -1593,7 +1619,8 @@
     }
 
     function openZoom() {
-      zoomImg.src = mainPhoto.src;
+      // The main photo shows a resized copy; zoom loads the original.
+      zoomImg.src = mainPhoto.getAttribute("data-full") || mainPhoto.src;
       zoomImg.alt = mainPhoto.alt || "";
 
       overlay.classList.remove("hidden");
@@ -1813,54 +1840,164 @@
 
   /* ── Photo cursor — Flow, Grid and Detail ───────────────────── */
 
-  document.addEventListener("mousemove", function (e) {
-    var photo = e.target.closest(".photo-item");
-
-    if (!photo) {
+  /*
+   * One shared "+" cursor for every photo, instead of a copy inside each
+   * tile. It is position:fixed and moved with a GPU transform once per
+   * animation frame, so mousemove does no layout work (no
+   * getBoundingClientRect, no left/top writes) and stays smooth while
+   * images are loading or decoding.
+   */
+  (function () {
+    if (!window.matchMedia || !window.matchMedia("(hover: hover)").matches) {
       return;
     }
 
-    var plus = photo.querySelector(".photo-plus-cursor");
+    var cursor = document.createElement("span");
 
-    if (!plus) {
-      return;
+    cursor.className = "photo-plus-cursor";
+    cursor.setAttribute("aria-hidden", "true");
+    cursor.innerHTML =
+      '<svg class="photo-plus-ring" viewBox="0 0 68 68" fill="none">' +
+      '<circle cx="34" cy="34" r="32" fill="rgba(255,255,255,0.055)"></circle>' +
+      '<g stroke="rgba(255,255,255,0.75)" stroke-width="1.2" stroke-linecap="round">' +
+      '<path d="M 22 3.5 A 30.5 30.5 0 0 1 46 3.5"></path>' +
+      '<path d="M 64.5 22 A 30.5 30.5 0 0 1 64.5 46"></path>' +
+      '<path d="M 46 64.5 A 30.5 30.5 0 0 1 22 64.5"></path>' +
+      '<path d="M 3.5 46 A 30.5 30.5 0 0 1 3.5 22"></path>' +
+      "</g>" +
+      "</svg>" +
+      '<svg class="photo-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">' +
+      '<path d="M12 5v14M5 12h14"></path>' +
+      "</svg>";
+
+    document.body.appendChild(cursor);
+
+    var activePhoto = null;
+    var mouseX = 0;
+    var mouseY = 0;
+    var frame = 0;
+
+    function render() {
+      frame = 0;
+      cursor.style.transform =
+        "translate3d(" + mouseX + "px, " + mouseY + "px, 0) translate(-50%, -50%)";
     }
 
-    var rect = photo.getBoundingClientRect();
-
-    var x = e.clientX - rect.left;
-    var y = e.clientY - rect.top;
-
-    plus.style.left = x + "px";
-    plus.style.top = y + "px";
-
-    photo.classList.add("cursor-none");
-    plus.style.opacity = "1";
-  });
-
-  document.addEventListener("mouseout", function (e) {
-    var photo = e.target.closest(".photo-item");
-
-    if (!photo) {
-      return;
+    function queueRender() {
+      if (!frame) {
+        frame = requestAnimationFrame(render);
+      }
     }
 
-    /*
-     * Moving between children of the same photo
-     * should not hide the cursor circle.
-     */
-    if (e.relatedTarget && photo.contains(e.relatedTarget)) {
-      return;
+    function show(photo) {
+      if (activePhoto && activePhoto !== photo) {
+        activePhoto.classList.remove("cursor-none");
+      }
+
+      activePhoto = photo;
+      photo.classList.add("cursor-none");
+      cursor.classList.add("is-visible");
     }
 
-    var plus = photo.querySelector(".photo-plus-cursor");
+    function hide() {
+      if (activePhoto) {
+        activePhoto.classList.remove("cursor-none");
+      }
 
-    photo.classList.remove("cursor-none");
-
-    if (plus) {
-      plus.style.opacity = "0";
+      activePhoto = null;
+      cursor.classList.remove("is-visible");
     }
-  });
+
+    document.addEventListener(
+      "mousemove",
+      function (e) {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+
+        if (activePhoto) {
+          queueRender();
+        }
+      },
+      { passive: true },
+    );
+
+    document.addEventListener("mouseover", function (e) {
+      var photo = e.target.closest && e.target.closest(".photo-item");
+
+      if (!photo) {
+        if (activePhoto) {
+          hide();
+        }
+        return;
+      }
+
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      render();
+      show(photo);
+    });
+
+    document.addEventListener("mouseout", function (e) {
+      if (!activePhoto) {
+        return;
+      }
+
+      // Moving between children of the same photo keeps the cursor.
+      if (e.relatedTarget && activePhoto.contains(e.relatedTarget)) {
+        return;
+      }
+
+      // Leaving the window, or onto something that isn't a photo
+      // (mouseover then shows it again if it is another photo).
+      if (!e.relatedTarget || !e.relatedTarget.closest(".photo-item")) {
+        hide();
+      }
+    });
+
+    // A photo can be hidden or removed under a still mouse (filters,
+    // Flow/Grid switch, zoom overlay opening) without any mouseout.
+    document.addEventListener("click", function () {
+      requestAnimationFrame(function () {
+        if (activePhoto && (!activePhoto.isConnected || activePhoto.offsetParent === null)) {
+          hide();
+        }
+      });
+    });
+  })();
+
+  /* ── Photo fade-in — show each photo once it has loaded ──────────── */
+
+  (function () {
+    function markLoaded(img) {
+      img.classList.add("is-loaded");
+    }
+
+    document.addEventListener(
+      "load",
+      function (e) {
+        if (e.target.classList && e.target.classList.contains("photo-img")) {
+          markLoaded(e.target);
+        }
+      },
+      true,
+    );
+
+    document.addEventListener(
+      "error",
+      function (e) {
+        if (e.target.classList && e.target.classList.contains("photo-img")) {
+          markLoaded(e.target);
+        }
+      },
+      true,
+    );
+
+    Array.prototype.forEach.call(document.querySelectorAll(".photo-img"), function (img) {
+      if (img.complete) {
+        markLoaded(img);
+      }
+    });
+  })();
 
   /* ── Grid view — infinite horizontal scroll + pagination ─────────── */
 
@@ -1918,79 +2055,17 @@
 
       a.setAttribute("data-year", p.year || "");
 
+      var gridAspect = photoAspect(p);
+
       a.innerHTML =
-        '<img src="' +
-        escAttr(p.src) +
-        '" alt="' +
-        escAttr(p.alt) +
-        '" class="h-full w-auto object-cover select-none">' +
-        // Cursor-following plus icon
-        '<span aria-hidden="true" class="photo-plus-cursor pointer-events-none absolute z-20 opacity-0 -translate-x-1/2 -translate-y-1/2">' +
-        '<span class="relative w-[68px] h-[68px] grid place-items-center">' +
-        '<svg class="absolute inset-0 w-full h-full" viewBox="0 0 68 68" fill="none" aria-hidden="true">' +
-        "<defs>" +
-        '<clipPath id="lensClip">' +
-        '<circle cx="34" cy="34" r="32"></circle>' +
-        "</clipPath>" +
-        '<filter id="lensShadow" x="-50%" y="-50%" width="200%" height="200%">' +
-        '<feGaussianBlur stdDeviation="3"></feGaussianBlur>' +
-        "</filter>" +
-        "</defs>" +
-        '<g clip-path="url(#lensClip)">' +
-        "<circle " +
-        'cx="34" cy="34" r="32.5" ' +
-        'fill="rgba(255,255,255,0.055)">' +
-        "</circle>" +
-        "<ellipse " +
-        'cx="27" cy="23" ' +
-        'rx="0" ry="0" ' +
-        'fill="rgba(255,255,255,0.29)" ' +
-        'filter="url(#lensShadow)" ' +
-        'transform="rotate(-35 27 23)">' +
-        "</ellipse>" +
-        "<circle " +
-        'cx="34" cy="34" r="30" ' +
-        'stroke="rgba(255,255,255,0.0)" ' +
-        'stroke-width="5" ' +
-        'filter="url(#lensShadow)">' +
-        "</circle>" +
-        "</g>" +
-        "<path " +
-        'd="M 22 3.5 A 30.5 30.5 0 0 1 46 3.5" ' +
-        'stroke="rgba(255,255,255,0.75)" ' +
-        'stroke-width="1.2" ' +
-        'stroke-linecap="round">' +
-        "</path>" +
-        "<path " +
-        'd="M 64.5 22 A 30.5 30.5 0 0 1 64.5 46" ' +
-        'stroke="rgba(255,255,255,0.75)" ' +
-        'stroke-width="1.2" ' +
-        'stroke-linecap="round">' +
-        "</path>" +
-        "<path " +
-        'd="M 46 64.5 A 30.5 30.5 0 0 1 22 64.5" ' +
-        'stroke="rgba(255,255,255,0.75)" ' +
-        'stroke-width="1.2" ' +
-        'stroke-linecap="round">' +
-        "</path>" +
-        "<path " +
-        'd="M 3.5 46 A 30.5 30.5 0 0 1 3.5 22" ' +
-        'stroke="rgba(255,255,255,0.75)" ' +
-        'stroke-width="1.2" ' +
-        'stroke-linecap="round">' +
-        "</path>" +
-        "</svg>" +
-        "<svg " +
-        'class="relative w-[26px] h-[26px] text-white" ' +
-        'viewBox="0 0 24 24" ' +
-        'fill="none" ' +
-        'stroke="currentColor" ' +
-        'stroke-width="1.4" ' +
-        'stroke-linecap="round">' +
-        '<path d="M12 5v14M5 12h14"></path>' +
-        "</svg>" +
-        "</span>" +
-        "</span>" +
+        "<img" +
+        photoImgAttrs(
+          p,
+          gridAspect ? "calc(43.3vh * " + gridAspect.toFixed(4) + ")" : "960px",
+        ) +
+        ' class="photo-img h-full w-auto object-cover select-none"' +
+        (p.color ? ' style="background-color: ' + escAttr(p.color) + '"' : "") +
+        ">" +
         // Hover frame (Corners)
         '<span aria-hidden="true" class="pointer-events-none absolute top-0 left-0 w-[44px] h-[48px] -translate-x-[9px] -translate-y-[9px] border-t-2 border-l-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>' +
         '<span aria-hidden="true" class="pointer-events-none absolute top-0 right-0 w-[44px] h-[48px] translate-x-[9px] -translate-y-[9px] border-t-2 border-r-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>' +
@@ -2402,6 +2477,12 @@
         return;
       }
 
+      if (!a._flowAspect) {
+        // Natural size from the server (data-aspect), so the tile gets its
+        // final height before the image has even started loading.
+        a._flowAspect = parseFloat(a.getAttribute("data-aspect")) || 0;
+      }
+
       var width = t.span * flowColWidth + (t.span - 1) * flowGap;
       var reserved = t.span * flowRowStep - flowGap;
       var aspect = a._flowAspect || 3 / 4;
@@ -2410,6 +2491,20 @@
 
       a.style.width = width + "px";
       a.style.height = height + "px";
+
+      // Tell the browser the exact rendered width (object-cover may need
+      // wider than the tile for a landscape photo in a tall box), so srcset
+      // picks the smallest resized copy that is still sharp.
+      var img = a._flowImg || (a._flowImg = a.querySelector("img"));
+
+      if (img && img.hasAttribute("srcset")) {
+        var needed = Math.ceil(Math.max(width, height * aspect));
+
+        if (img._flowSizes !== needed) {
+          img._flowSizes = needed;
+          img.sizes = needed + "px";
+        }
+      }
       a.style.left = flowPadLeft + t.col * (flowColWidth + flowGap) + "px";
       a.style.top = flowPadTop + t.row * flowRowStep + drop + "px";
     }
@@ -2608,80 +2703,18 @@
       a.setAttribute("data-state", p.state || "");
       a.setAttribute("data-year", p.year || "");
 
+      if (photoAspect(p)) {
+        a.setAttribute("data-aspect", photoAspect(p).toFixed(4));
+      }
+
       a.innerHTML =
-        '<div class="relative h-full">' +
-        '<img src="' +
-        escAttr(p.src) +
-        '" alt="' +
-        escAttr(p.alt) +
-        '" class="block w-full h-full object-cover select-none">' +
-        // Cursor-following plus icon
-        '<span aria-hidden="true" class="photo-plus-cursor pointer-events-none absolute z-20 opacity-0 -translate-x-1/2 -translate-y-1/2">' +
-        '<span class="relative w-[68px] h-[68px] grid place-items-center">' +
-        '<svg class="absolute inset-0 w-full h-full" viewBox="0 0 68 68" fill="none" aria-hidden="true">' +
-        "<defs>" +
-        '<clipPath id="lensClip">' +
-        '<circle cx="34" cy="34" r="32"></circle>' +
-        "</clipPath>" +
-        '<filter id="lensShadow" x="-50%" y="-50%" width="200%" height="200%">' +
-        '<feGaussianBlur stdDeviation="3"></feGaussianBlur>' +
-        "</filter>" +
-        "</defs>" +
-        '<g clip-path="url(#lensClip)">' +
-        "<circle " +
-        'cx="34" cy="34" r="32.5" ' +
-        'fill="rgba(255,255,255,0.055)">' +
-        "</circle>" +
-        "<ellipse " +
-        'cx="27" cy="23" ' +
-        'rx="0" ry="0" ' +
-        'fill="rgba(255,255,255,0.29)" ' +
-        'filter="url(#lensShadow)" ' +
-        'transform="rotate(-35 27 23)">' +
-        "</ellipse>" +
-        "<circle " +
-        'cx="34" cy="34" r="30" ' +
-        'stroke="rgba(255,255,255,0.0)" ' +
-        'stroke-width="5" ' +
-        'filter="url(#lensShadow)">' +
-        "</circle>" +
-        "</g>" +
-        "<path " +
-        'd="M 22 3.5 A 30.5 30.5 0 0 1 46 3.5" ' +
-        'stroke="rgba(255,255,255,0.75)" ' +
-        'stroke-width="1.2" ' +
-        'stroke-linecap="round">' +
-        "</path>" +
-        "<path " +
-        'd="M 64.5 22 A 30.5 30.5 0 0 1 64.5 46" ' +
-        'stroke="rgba(255,255,255,0.75)" ' +
-        'stroke-width="1.2" ' +
-        'stroke-linecap="round">' +
-        "</path>" +
-        "<path " +
-        'd="M 46 64.5 A 30.5 30.5 0 0 1 22 64.5" ' +
-        'stroke="rgba(255,255,255,0.75)" ' +
-        'stroke-width="1.2" ' +
-        'stroke-linecap="round">' +
-        "</path>" +
-        "<path " +
-        'd="M 3.5 46 A 30.5 30.5 0 0 1 3.5 22" ' +
-        'stroke="rgba(255,255,255,0.75)" ' +
-        'stroke-width="1.2" ' +
-        'stroke-linecap="round">' +
-        "</path>" +
-        "</svg>" +
-        "<svg " +
-        'class="relative w-[26px] h-[26px] text-white" ' +
-        'viewBox="0 0 24 24" ' +
-        'fill="none" ' +
-        'stroke="currentColor" ' +
-        'stroke-width="1.4" ' +
-        'stroke-linecap="round">' +
-        '<path d="M12 5v14M5 12h14"></path>' +
-        "</svg>" +
-        "</span>" +
-        "</span>" +
+        '<div class="relative h-full"' +
+        (p.color ? ' style="background-color: ' + escAttr(p.color) + '"' : "") +
+        ">" +
+        "<img" +
+        // flowSizeTile replaces sizes with the tile's exact width once placed
+        photoImgAttrs(p, "(max-width: 560px) 50vw, 26vw") +
+        ' class="photo-img block w-full h-full object-cover select-none">' +
         // Hover frame
         '<span aria-hidden="true" class="pointer-events-none absolute top-0 left-0 w-[44px] h-[48px] -translate-x-[9px] -translate-y-[9px] border-t-2 border-l-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>' +
         '<span aria-hidden="true" class="pointer-events-none absolute top-0 right-0 w-[44px] h-[48px] translate-x-[9px] -translate-y-[9px] border-t-2 border-r-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>' +
