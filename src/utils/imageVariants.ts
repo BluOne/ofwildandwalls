@@ -1,4 +1,9 @@
 import sharp from "sharp";
+
+// Keep memory low enough for a small server: no libvips operation cache,
+// and one worker thread per image (the copies are made one at a time).
+sharp.cache(false);
+sharp.concurrency(1);
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import s3 from "../config/s3";
 
@@ -53,10 +58,8 @@ const toHex = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(
  * at least one copy). Also returns the original's size and dominant colour.
  */
 export const createImageVariants = async (buffer: Buffer, base: string): Promise<ImageVariantInfo> => {
-  // .rotate() applies the EXIF orientation, so width/height match what the
-  // browser displays.
-  const source = sharp(buffer, { failOn: "none" }).rotate();
-  const meta = await source.metadata();
+  // Reads only the file header, so it doesn't decode the image.
+  const meta = await sharp(buffer, { failOn: "none" }).metadata();
 
   let width = meta.width || null;
   let height = meta.height || null;
@@ -70,20 +73,28 @@ export const createImageVariants = async (buffer: Buffer, base: string): Promise
   if (widths.length === 0 && width) widths = [width];
   if (widths.length === 0) widths = [VARIANT_WIDTHS[0]];
 
-  await Promise.all(
-    widths.map(async (w) => {
-      const out = await source
-        .clone()
-        .resize({ width: w, withoutEnlargement: true })
-        .webp({ quality: 75, effort: 5 })
-        .toBuffer();
-      await putImage(`${base}-${w}.webp`, out, "image/webp");
-    }),
-  );
+  // One copy at a time: decoding a large photo several times in parallel
+  // is what runs a small server out of memory. A fresh pipeline per width
+  // lets libvips shrink the JPEG while decoding, so each pass stays small.
+  // .rotate() applies the EXIF orientation.
+  let smallest: Buffer | null = null;
 
+  for (const w of widths) {
+    const out = await sharp(buffer, { failOn: "none" })
+      .rotate()
+      .resize({ width: w, withoutEnlargement: true })
+      .webp({ quality: 75, effort: 5 })
+      .toBuffer();
+
+    await putImage(`${base}-${w}.webp`, out, "image/webp");
+
+    if (!smallest) smallest = out;
+  }
+
+  // Dominant colour from the smallest copy instead of the full image.
   let color: string | null = null;
   try {
-    const { dominant } = await source.clone().stats();
+    const { dominant } = await sharp(smallest!).stats();
     color = `#${toHex(dominant.r)}${toHex(dominant.g)}${toHex(dominant.b)}`;
   } catch {
     color = null;

@@ -20,7 +20,9 @@ interface Row extends RowDataPacket {
   s3_key: string | null;
 }
 
-const CONCURRENCY = 3;
+// One photo at a time by default, so large originals fit in a small
+// server's memory. Raise with BACKFILL_CONCURRENCY=2 on a bigger machine.
+const CONCURRENCY = Math.max(1, parseInt(process.env.BACKFILL_CONCURRENCY || "1", 10) || 1);
 
 const download = async (row: Row): Promise<Buffer> => {
   const key = row.s3_key || "";
