@@ -80,6 +80,12 @@
       color: #fff;
     }
     .photo-plus-cursor.is-visible { opacity: 1; }
+    /* Over a photo the "+" ring replaces the mouse pointer completely —
+       including the hand on links and the zoom-in on the detail photo.
+       Only for a real mouse; touch screens never show the ring. */
+    @media (hover: hover) and (pointer: fine) {
+      .js .photo-item, .js .photo-item * { cursor: none !important; }
+    }
     .photo-plus-ring { position: absolute; inset: 0; width: 100%; height: 100%; }
     .photo-plus-icon { position: relative; width: 26px; height: 26px; }
   </style>

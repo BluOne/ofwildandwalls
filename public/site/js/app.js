@@ -1848,7 +1848,7 @@
    * images are loading or decoding.
    */
   (function () {
-    if (!window.matchMedia || !window.matchMedia("(hover: hover)").matches) {
+    if (!window.matchMedia || !window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
       return;
     }
 
