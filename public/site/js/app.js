@@ -1399,6 +1399,73 @@
       // Intentionally empty.
     }
 
+    // Increases on every photo switch; a load that finishes for an older
+    // switch is ignored, so a slow download can't replace a newer photo.
+    var mainPhotoToken = 0;
+    var MAIN_SIZES = "(max-width: 768px) 100vw, 75vw";
+
+    function loadMainPhoto(token, src, srcset, full) {
+      var loader = new Image();
+
+      loader.decoding = "async";
+
+      if (srcset) {
+        loader.sizes = MAIN_SIZES;
+        loader.srcset = srcset;
+      }
+
+      loader.onload = function () {
+        if (token !== mainPhotoToken) {
+          return;
+        }
+
+        // Same srcset/sizes as the loader, so this picks the copy that has
+        // just been downloaded and shows it at once from the cache.
+        if (srcset) {
+          mainPhoto.setAttribute("sizes", MAIN_SIZES);
+          mainPhoto.setAttribute("srcset", srcset);
+        }
+
+        mainPhoto.src = src;
+        mainPhoto.style.visibility = "";
+      };
+
+      loader.onerror = function () {
+        if (token !== mainPhotoToken) {
+          return;
+        }
+
+        if (!full || full === src) {
+          mainPhoto.style.visibility = "";
+          return;
+        }
+
+        // The resized copy is missing or blocked: use the original.
+        var original = new Image();
+
+        original.decoding = "async";
+        original.onload = function () {
+          if (token !== mainPhotoToken) {
+            return;
+          }
+
+          mainPhoto._usedFull = true;
+          mainPhoto.removeAttribute("srcset");
+          mainPhoto.removeAttribute("sizes");
+          mainPhoto.src = full;
+          mainPhoto.style.visibility = "";
+        };
+        original.onerror = function () {
+          if (token === mainPhotoToken) {
+            mainPhoto.style.visibility = "";
+          }
+        };
+        original.src = full;
+      };
+
+      loader.src = src;
+    }
+
     function selectThumb(th) {
       if (!th) return;
 
@@ -1407,8 +1474,35 @@
 
         var alt = th.getAttribute("data-alt");
 
-        mainPhoto.src = src;
-        mainPhoto.setAttribute("data-full", th.getAttribute("data-full") || src);
+        var srcset = th.getAttribute("data-srcset") || "";
+        var full = th.getAttribute("data-full") || src;
+        var token = ++mainPhotoToken;
+
+        mainPhoto._usedFull = false;
+        mainPhoto.setAttribute("data-full", full);
+        mainPhoto.removeAttribute("width");
+        mainPhoto.removeAttribute("height");
+        mainPhoto.removeAttribute("srcset");
+        mainPhoto.removeAttribute("sizes");
+
+        // A browser keeps showing the previous image until a new src has
+        // fully loaded, so when scrolling fast the old photo stayed up next
+        // to the new photo's details. Show this photo's sidebar thumbnail
+        // straight away (it is already loaded), then swap in the sharp copy
+        // once it is ready, but only if this photo is still the selected one.
+        var thumbImg = th.querySelector("img");
+        var placeholder = thumbImg && thumbImg.complete && thumbImg.naturalWidth
+          ? thumbImg.currentSrc || thumbImg.src
+          : "";
+
+        // No loaded thumbnail to show (it is lazy and still off screen):
+        // hide the photo until the right one is ready rather than leaving
+        // the previous photo up. visibility, not opacity, because the
+        // fade-up animation controls opacity.
+        mainPhoto.style.visibility = placeholder ? "" : "hidden";
+        mainPhoto.src = placeholder || src;
+
+        loadMainPhoto(token, src, srcset, full);
         mainPhoto.alt = alt || "";
 
         mainPhoto.style.animationDelay = "0s";
@@ -2032,7 +2126,7 @@
       function (e) {
         var img = e.target;
 
-        // An image with data-full (detail sidebar thumbnails) shows a resized
+        // An image with data-full (detail main photo and sidebar thumbnails) shows a resized
         // copy; if that copy is missing or blocked, fall back to the
         // original once instead of showing a broken image.
         var full = img && img.getAttribute && img.getAttribute("data-full");
