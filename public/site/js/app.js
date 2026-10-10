@@ -689,8 +689,8 @@
       var countHtml =
         typeof count === "number"
           ? ' <span class="text-ink/40 dark:text-white/40 font-normal">[' +
-            count +
-            "]</span>"
+          count +
+          "]</span>"
           : "";
 
       labelEl.innerHTML =
@@ -935,12 +935,12 @@
 
           var arrowHtml = hasStates
             ? '<button type="button" class="oww-loc-expand ml-auto flex items-center justify-center w-6 h-6 rounded text-ink/40 dark:text-white/40 hover:text-ink dark:hover:text-white transition-colors" data-country="' +
-              escAttr(c.country) +
-              '">' +
-              '<svg viewBox="0 0 16 16" class="w-3 h-3 transition-transform' +
-              (isExpanded ? " rotate-180" : "") +
-              '" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>' +
-              "</button>"
+            escAttr(c.country) +
+            '">' +
+            '<svg viewBox="0 0 16 16" class="w-3 h-3 transition-transform' +
+            (isExpanded ? " rotate-180" : "") +
+            '" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>' +
+            "</button>"
             : '<span class="w-6 ml-auto"></span>';
 
           var html =
@@ -2401,20 +2401,23 @@
     var FLOW_PATTERN = [
       { row: 0, col: 2, span: 1, drop: 0 },
       { row: 0, col: 5, span: 1, drop: 0 },
-      { row: 1, col: 0, span: 2, drop: 0 },
+      // shift: horizontal nudge in columns (+ right, - left). Every photo
+      // in the first or last column is pulled half a column in, so none
+      // touches the screen edge.
+      { row: 1, col: 0, span: 2, drop: 0, shift: 0.05 },
       { row: 1, col: 3, span: 1, drop: 0 },
       { row: 1, col: 4, span: 2, drop: 0 },
-      { row: 1, col: 7, span: 1, drop: 0 },
+      { row: 1, col: 7, span: 1, drop: 0, shift: -0.05 },
       { row: 2, col: 6, span: 1, drop: 0 },
       { row: 3, col: 1, span: 1, drop: 0.05 },
       { row: 3, col: 2, span: 2, drop: 0 },
-      { row: 3, col: 6, span: 2, drop: 0 },
-      { row: 4, col: 0, span: 1, drop: 0 },
+      { row: 3, col: 6, span: 2, drop: 0, shift: -0.05 },
+      { row: 4, col: 0, span: 1, drop: 0, shift: 0.05 },
       { row: 4, col: 4, span: 1, drop: 0 },
       { row: 5, col: 1, span: 1, drop: 0 },
       { row: 5, col: 3, span: 2, drop: 0 },
-      { row: 5, col: 7, span: 1, drop: 0 },
-      { row: 6, col: 0, span: 1, drop: 0 },
+      { row: 5, col: 7, span: 1, drop: 0, shift: -0.05 },
+      { row: 6, col: 0, span: 1, drop: 0, shift: 0.05 },
       { row: 6, col: 5, span: 1, drop: 0.12 },
       { row: 7, col: 1, span: 2, drop: 0 },
       { row: 7, col: 5, span: 2, drop: 0 },
@@ -2428,7 +2431,7 @@
 
       flowOccupy(row, slot.col, slot.span);
 
-      a._flow = { row: row, col: slot.col, span: slot.span, drop: slot.drop };
+      a._flow = { row: row, col: slot.col, span: slot.span, drop: slot.drop, shift: slot.shift || 0 };
       a.style.position = "absolute";
 
       flowSizeTile(a);
@@ -2539,7 +2542,7 @@
           img.sizes = needed + "px";
         }
       }
-      a.style.left = flowPadLeft + t.col * (flowColWidth + flowGap) + "px";
+      a.style.left = flowPadLeft + (t.col + (t.shift || 0)) * (flowColWidth + flowGap) + "px";
       a.style.top = flowPadTop + t.row * flowRowStep + drop + "px";
     }
 
@@ -2582,7 +2585,7 @@
       var drop = r() < 0.3 ? 0.05 + r() * 0.09 : 0;
       var col;
 
-      for (;;) {
+      for (; ;) {
         if (flowRowLeft > 0) {
           var options = flowCandidates(flowRow, span);
 
