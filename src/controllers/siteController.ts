@@ -331,7 +331,7 @@ const getPhotoDetail = async (req: Request, res: Response) => {
         ref: r.ref || "",
         about: r.description || "",
         altNote: r.alt_note || "",
-        collection: r.col_desc || colName || "Unknown",
+        collection: r.col_desc || colName || "",
         collectionHref: "#",
         camera: camName,
         lens: lenName,

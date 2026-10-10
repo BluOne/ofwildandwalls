@@ -1441,7 +1441,17 @@
         }
 
         if (elCollection && th.dataset.collection !== undefined) {
-          elCollection.textContent = th.dataset.collection || "Unknown";
+          var collectionText = (th.dataset.collection || "").trim();
+          var hasCollection =
+            collectionText !== "" && collectionText.toLowerCase() !== "unknown";
+          var collectionSection = panel.querySelector('[data-section="collection"]');
+
+          elCollection.textContent = hasCollection ? collectionText : "";
+
+          // Hide the whole "About the collection" block when there is none.
+          if (collectionSection) {
+            collectionSection.classList.toggle("hidden", !hasCollection);
+          }
         }
 
         if (elCamera && th.dataset.camera && th.dataset.lens) {
@@ -1533,6 +1543,12 @@
       if (next < 0) next = 0;
       if (next > els.length - 1) next = els.length - 1;
 
+      // Already on the first/last photo: stay put. Re-selecting the same
+      // photo would replay its fade-in and look like the rail moved.
+      if (next === activeIdx) {
+        return;
+      }
+
       setActivePhoto(next);
     }
 
@@ -1596,6 +1612,10 @@
     els.forEach(function (th, i) {
       th.addEventListener("click", function (e) {
         e.preventDefault();
+
+        if (i === activeIdx) {
+          return;
+        }
 
         setActivePhoto(i);
       });

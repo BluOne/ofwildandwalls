@@ -145,6 +145,10 @@
                       <%= d.about %>
                     </p>
 
+                    <%# Hidden when the photo has no collection; app.js toggles it
+                        when another photo is picked from the rail. %>
+                    <% var hasCollection = d.collection && String(d.collection).trim() && String(d.collection).trim().toLowerCase() !== 'unknown'; %>
+                    <div data-section="collection"<% if (!hasCollection) { %> class="hidden"<% } %>>
                     <div class="my-6 border-t border-dashed border-neutral-200 dark:border-neutral-800"></div>
                     <p
                       class="text-[10px] font-bold tracking-[0.14em] uppercase text-neutral-400 flex items-center gap-1.5">
@@ -152,8 +156,9 @@
                     </p>
                     <p data-field="collection"
                       class="mt-2.5 text-[13px] leading-[1.6] text-neutral-700 dark:text-neutral-300">
-                      <%= d.collection %>
+                      <%= hasCollection ? d.collection : '' %>
                     </p>
+                    </div>
                     <div class="my-6 border-t border-dashed border-neutral-200 dark:border-neutral-800"></div>
                     <p
                       class="text-[10px] font-bold tracking-[0.14em] uppercase text-neutral-400 flex items-center gap-1.5">
