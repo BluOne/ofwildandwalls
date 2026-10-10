@@ -82,6 +82,31 @@
 
   updateThemeIcons();
 
+  // Re-apply the saved theme whenever this page is shown again. The back
+  // button restores the previous page from the browser's cache exactly as
+  // it was, so a theme picked on the detail page would otherwise be lost
+  // until a reload. The storage event keeps other open tabs in sync too.
+  function applySavedTheme() {
+    var saved = null;
+
+    try {
+      saved = localStorage.getItem(KEY);
+    } catch (err) {
+      return;
+    }
+
+    root.classList.toggle("dark", saved === "dark");
+    updateThemeIcons();
+  }
+
+  window.addEventListener("pageshow", applySavedTheme);
+
+  window.addEventListener("storage", function (e) {
+    if (e.key === KEY) {
+      applySavedTheme();
+    }
+  });
+
   /* ── Mobile / tablet header hamburger ────────────────────────────── */
   (function () {
     var toggle = document.getElementById("navToggle");
