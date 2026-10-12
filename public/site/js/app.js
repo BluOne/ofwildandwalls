@@ -1539,15 +1539,15 @@
 
         var elSettings = panel.querySelector('[data-field="settings"]');
 
-        if (elKicker && th.dataset.kicker) {
+        if (elKicker && th.dataset.kicker !== undefined) {
           elKicker.textContent = th.dataset.kicker;
         }
 
-        if (elTitle && th.dataset.title) {
+        if (elTitle && th.dataset.title !== undefined) {
           elTitle.textContent = th.dataset.title;
         }
 
-        if (elRef && th.dataset.ref) {
+        if (elRef && th.dataset.ref !== undefined) {
           elRef.textContent = th.dataset.ref;
         }
 
@@ -1573,12 +1573,21 @@
           }
         }
 
-        if (elCamera && th.dataset.camera && th.dataset.lens) {
-          elCamera.innerHTML =
-            th.dataset.camera +
-            ' / <span class="text-amber-600 dark:text-amber-400">' +
-            th.dataset.lens +
-            "</span>";
+        // Every field is replaced on each switch, even with an empty value,
+        // so nothing from the previously shown photo is left behind.
+        if (elCamera && (th.dataset.camera !== undefined || th.dataset.lens !== undefined)) {
+          var camera = th.dataset.camera || "";
+          var lens = th.dataset.lens || "";
+
+          elCamera.textContent = camera + (camera && lens ? " / " : "");
+
+          if (lens) {
+            var lensSpan = document.createElement("span");
+
+            lensSpan.className = "text-amber-600 dark:text-amber-400";
+            lensSpan.textContent = lens;
+            elCamera.appendChild(lensSpan);
+          }
         }
 
         if (elDate && th.dataset.date !== undefined) {
@@ -1595,7 +1604,7 @@
           elCategory.textContent = th.dataset.category;
         }
 
-        if (elSettings && th.dataset.settings) {
+        if (elSettings && th.dataset.settings !== undefined) {
           elSettings.textContent = th.dataset.settings;
         }
       }

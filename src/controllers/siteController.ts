@@ -94,6 +94,10 @@ const formatMonthYear = (raw: any): string => {
   return text;
 };
 
+/** Joins the non-empty parts, e.g. ["Rajasthan", "India"] → "Rajasthan, India". */
+const joinParts = (parts: any[], sep: string): string =>
+  parts.map((v) => String(v || "").trim()).filter(Boolean).join(sep);
+
 /** Parse the JSON metadata column into a flat key→value map */
 const parseMeta = (raw: any): Record<string, string> => {
   let arr: any[] = [];
@@ -374,6 +378,10 @@ const getPhotoDetail = async (req: Request, res: Response) => {
         lens: lenName,
         date: r.date || "",
         dateLabel: formatMonthYear(r.date),
+        // Display text for the detail panel, built here so the template
+        // stays short (a code formatter once split a long one and broke it).
+        locationLabel: joinParts([r.country_state || r.state, r.country_name], ", "),
+        categoryLabel: joinParts([(catParent && catParent.trim().toLowerCase() !== "none") ? catParent : "", catName], " & "),
         location: gM("Location"),
         state: r.country_state || r.state || "",
         country: r.country_name || "",
@@ -575,6 +583,8 @@ const getPhotoBySlugAPI = async (req: Request, res: Response) => {
       lens: (d as any).len_model || getMeta("Lens"),
       date: d.date || "",
       dateLabel: formatMonthYear(d.date),
+      locationLabel: joinParts([(d as any).country_state || d.state, (d as any).country_name], ", "),
+      categoryLabel: joinParts([((d as any).cat_parent && String((d as any).cat_parent).trim().toLowerCase() !== "none") ? (d as any).cat_parent : "", (d as any).cat_name], " & "),
       location: getMeta("Location"),
       state: (d as any).country_state || d.state || "",
       country: (d as any).country_name || "",
