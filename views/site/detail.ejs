@@ -203,7 +203,8 @@
                                 <%= d.locationLabel || '' %>
                             </p>
                           </div>
-                          <div>
+                          <%# Hidden when the photo has no category; app.js toggles it on switch. %>
+                          <div data-section="category"<% if (!d.categoryLabel) { %> class="hidden"<% } %>>
                             <p class="text-[10px] font-bold tracking-[0.12em] uppercase text-neutral-400">CATEGORY</p>
                             <p data-field="category"
                               class="mt-1 text-[12px] font-medium text-neutral-800 dark:text-neutral-200">

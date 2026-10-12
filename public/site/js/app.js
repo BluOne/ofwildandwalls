@@ -1602,6 +1602,12 @@
 
         if (elCategory && th.dataset.category !== undefined) {
           elCategory.textContent = th.dataset.category;
+
+          var categorySection = panel.querySelector('[data-section="category"]');
+
+          if (categorySection) {
+            categorySection.classList.toggle("hidden", !th.dataset.category);
+          }
         }
 
         if (elSettings && th.dataset.settings !== undefined) {

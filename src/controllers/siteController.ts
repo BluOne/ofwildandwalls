@@ -360,7 +360,7 @@ const getPhotoDetail = async (req: Request, res: Response) => {
     const buildDetailsFromJoined = (r: any) => {
       const m = parseMeta(r.metadata);
       const gM = (k: string) => m[k] || m[k.toLowerCase()] || "";
-      const catName = r.cat_name || "Photography";
+      const catName = r.cat_name || "";
       const catParent = r.cat_parent || "";
       const colName = r.col_name || "";
       const camName = formatCameraName(r.cam_brand, r.cam_model, gM("Camera"));
@@ -572,7 +572,7 @@ const getPhotoBySlugAPI = async (req: Request, res: Response) => {
     const getMeta = (k: string) => meta[k] || meta[k.toLowerCase()] || "";
 
     const details = {
-      kicker: (d as any).cat_name || "Photography",
+      kicker: (d as any).cat_name || "",
       title: d.cap || d.title || "",
       ref: d.ref || "",
       about: d.description || "",
