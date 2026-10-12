@@ -337,7 +337,10 @@ const getPhotoDetail = async (req: Request, res: Response) => {
         lens: lenName,
         date: r.date || "",
         location: gM("Location"),
-        category: (catParent && catParent.trim().toLowerCase() !== "none") ? `${catParent} / ${catName}` : catName,
+        state: r.country_state || r.state || "",
+        country: r.country_name || "",
+        // Kept separate; the detail view joins them as "Parent & Category".
+        category: catName,
         parentCategory: (catParent && catParent.trim().toLowerCase() !== "none") ? catParent : "",
         settings: gM("Settings"),
       };
@@ -534,8 +537,10 @@ const getPhotoBySlugAPI = async (req: Request, res: Response) => {
       lens: (d as any).len_model || getMeta("Lens"),
       date: d.date || "",
       location: getMeta("Location"),
+      state: (d as any).country_state || d.state || "",
+      country: (d as any).country_name || "",
       category: (d as any).cat_name || "",
-      parentCategory: (d as any).cat_parent || "",
+      parentCategory: ((d as any).cat_parent && String((d as any).cat_parent).trim().toLowerCase() !== "none") ? (d as any).cat_parent : "",
       settings: getMeta("Settings"),
     };
 

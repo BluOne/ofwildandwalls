@@ -1585,11 +1585,13 @@
           elDate.textContent = th.dataset.date;
         }
 
-        if (elLocation && th.dataset.location) {
+        // "State, Country" from the server; an empty value clears the
+        // previous photo's text instead of leaving it behind.
+        if (elLocation && th.dataset.location !== undefined) {
           elLocation.textContent = th.dataset.location;
         }
 
-        if (elCategory && th.dataset.category) {
+        if (elCategory && th.dataset.category !== undefined) {
           elCategory.textContent = th.dataset.category;
         }
 
