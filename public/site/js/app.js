@@ -1581,7 +1581,7 @@
             "</span>";
         }
 
-        if (elDate && th.dataset.date) {
+        if (elDate && th.dataset.date !== undefined) {
           elDate.textContent = th.dataset.date;
         }
 

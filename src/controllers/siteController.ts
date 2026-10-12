@@ -57,6 +57,43 @@ const buildPhotoUrl = (row: DBPhotoRow): string => {
   return "";
 };
 
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/**
+ * "Month Year" (e.g. "April 2026") from the free-text date column, which
+ * holds both "2026-04-25" and day-first "25/04/26" / "25/04/2026" values.
+ * Parsed by hand, not with new Date(), which reads "06/04/26" as June and
+ * shifts days across time zones. Anything unrecognised is returned as-is.
+ */
+const formatMonthYear = (raw: any): string => {
+  const text = String(raw || "").trim();
+  if (!text) return "";
+
+  let year = 0;
+  let month = 0;
+  let m: RegExpMatchArray | null;
+
+  if ((m = text.match(/^(\d{4})[-/.](\d{1,2})(?:[-/.]\d{1,2})?/))) {
+    year = +m[1];
+    month = +m[2];
+  } else if ((m = text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})$/))) {
+    month = +m[2];
+    year = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+  } else if (raw instanceof Date && !isNaN(raw.getTime())) {
+    year = raw.getFullYear();
+    month = raw.getMonth() + 1;
+  }
+
+  if (year && month >= 1 && month <= 12) {
+    return `${MONTH_NAMES[month - 1]} ${year}`;
+  }
+
+  return text;
+};
+
 /** Parse the JSON metadata column into a flat key→value map */
 const parseMeta = (raw: any): Record<string, string> => {
   let arr: any[] = [];
@@ -336,6 +373,7 @@ const getPhotoDetail = async (req: Request, res: Response) => {
         camera: camName,
         lens: lenName,
         date: r.date || "",
+        dateLabel: formatMonthYear(r.date),
         location: gM("Location"),
         state: r.country_state || r.state || "",
         country: r.country_name || "",
@@ -536,6 +574,7 @@ const getPhotoBySlugAPI = async (req: Request, res: Response) => {
       camera: (d as any).cam_model || getMeta("Camera"),
       lens: (d as any).len_model || getMeta("Lens"),
       date: d.date || "",
+      dateLabel: formatMonthYear(d.date),
       location: getMeta("Location"),
       state: (d as any).country_state || d.state || "",
       country: (d as any).country_name || "",
