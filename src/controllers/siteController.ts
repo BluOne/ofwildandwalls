@@ -380,7 +380,7 @@ const getPhotoDetail = async (req: Request, res: Response) => {
         dateLabel: formatMonthYear(r.date),
         // Display text for the detail panel, built here so the template
         // stays short (a code formatter once split a long one and broke it).
-        locationLabel: joinParts([r.country_state || r.state, r.country_name], ", "),
+        locationLabel: joinParts([gM("Location"), r.country_state || r.state, r.country_name], ", "),
         categoryLabel: joinParts([(catParent && catParent.trim().toLowerCase() !== "none") ? catParent : "", catName], " & "),
         location: gM("Location"),
         state: r.country_state || r.state || "",
@@ -583,7 +583,7 @@ const getPhotoBySlugAPI = async (req: Request, res: Response) => {
       lens: (d as any).len_model || getMeta("Lens"),
       date: d.date || "",
       dateLabel: formatMonthYear(d.date),
-      locationLabel: joinParts([(d as any).country_state || d.state, (d as any).country_name], ", "),
+      locationLabel: joinParts([getMeta("Location"), (d as any).country_state || d.state, (d as any).country_name], ", "),
       categoryLabel: joinParts([((d as any).cat_parent && String((d as any).cat_parent).trim().toLowerCase() !== "none") ? (d as any).cat_parent : "", (d as any).cat_name], " & "),
       location: getMeta("Location"),
       state: (d as any).country_state || d.state || "",
