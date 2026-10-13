@@ -81,17 +81,16 @@
                               <th class="th w-[9%]"><button type="button"
                                   class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]"
                                   data-key="date">Date <span class="text-amber"></span></button></th>
-                              <th class="th w-[14%]">Variants</th>
                               <th class="th w-[9%]"><button type="button"
                                   class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]"
                                   data-key="live">Live <span class="text-amber"></span></button></th>
-                              <th class="th w-[122px] text-right">Actions</th>
+                              <th class="th w-[150px] !text-right">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
                             <% if (photos.length===0) { %>
                               <tr>
-                                <td colspan="10" class="td text-center py-8 text-mute">No photos found matching your
+                                <td colspan="9" class="td text-center py-8 text-mute">No photos found matching your
                                   criteria.</td>
                               </tr>
                               <% } %>
@@ -126,18 +125,6 @@
                                       <td class="td whitespace-nowrap text-xs text-mute">
                                         <%= p.date || "-" %>
                                       </td>
-                                      <td class="td text-[11px]">
-                                        <% if (p.variants && p.variants.length) { %>
-                                          <div class="flex flex-wrap gap-1">
-                                            <% p.variants.forEach(function (v) { %>
-                                              <a href="<%= v.url %>" target="_blank" rel="noopener"
-                                                class="rounded-full border border-line2 bg-white px-2 py-0.5 text-mute hover:bg-sand hover:text-ink"><%= v.width %></a>
-                                            <% }) %>
-                                          </div>
-                                        <% } else { %>
-                                          <span class="text-mute">-</span>
-                                        <% } %>
-                                      </td>
                                       <td class="td">
                                         <form method="post" action="/admin/photos/<%= p.slug %>/toggle<%= rowReturn %>">
                                           <button
@@ -147,14 +134,14 @@
                                         </form>
                                       </td>
                                       <td class="td">
-                                        <div class="flex justify-end gap-1.5">
+                                        <div class="flex items-center justify-end gap-2">
                                           <a href="/admin/photos/<%= p.slug %>/edit<%= rowReturn %>"
-                                            class="rounded-full border border-line2 bg-white px-3 py-1.5 text-xs hover:bg-sand">Edit</a>
+                                            class="inline-flex h-8 items-center justify-center whitespace-nowrap rounded-full border border-line2 bg-white px-3.5 text-xs leading-none hover:bg-sand">Edit</a>
                                           <form method="post"
                                             action="/admin/photos/<%= p.slug %>/delete<%= rowReturn %>"
                                             data-confirm="Delete <%= p.cap %>?">
                                             <button type="submit"
-                                              class="rounded-full border border-line2 bg-white px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 hover:border-red-200">Delete</button>
+                                              class="inline-flex h-8 items-center justify-center whitespace-nowrap rounded-full border border-line2 bg-white px-3.5 text-xs leading-none text-red-600 hover:bg-red-50 hover:border-red-200">Delete</button>
                                           </form>
                                         </div>
                                       </td>
