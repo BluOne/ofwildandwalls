@@ -161,10 +161,45 @@
   });
 
   // ---- delete confirmation ------------------------------------------------
+  // Styled popup shared by every [data-confirm] form and [data-confirm-click] button.
+  let confirmModal = null;
+  function askConfirm(message, onYes) {
+    if (!confirmModal) {
+      confirmModal = document.createElement("div");
+      confirmModal.className = "fixed inset-0 z-50 hidden place-items-center bg-pine/50 p-6";
+      confirmModal.innerHTML =
+        '<div role="alertdialog" aria-modal="true" class="w-full max-w-[400px] overflow-hidden rounded-[20px] border border-line bg-cream shadow-2xl">' +
+        '<div class="bg-pine px-5 py-4 text-[15px] font-semibold text-cream">Please confirm</div>' +
+        '<div class="grid gap-4 p-5"><p data-msg class="text-[13px] text-ink"></p>' +
+        '<p class="text-xs text-mute">This cannot be undone.</p>' +
+        '<div class="flex gap-2"><button type="button" data-yes class="rounded-full bg-red-600 px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-red-700">Delete</button>' +
+        '<button type="button" data-no class="rounded-full border border-line2 bg-white px-4 py-2.5 text-[13px] text-ink hover:bg-sand">Cancel</button></div></div></div>';
+      document.body.appendChild(confirmModal);
+      confirmModal.addEventListener("click", e => { if (e.target === confirmModal) close(); });
+      confirmModal.querySelector("[data-no]").addEventListener("click", close);
+      document.addEventListener("keydown", e => { if (e.key === "Escape") close(); });
+    }
+    function close() { confirmModal.classList.replace("grid", "hidden"); }
+    confirmModal.querySelector("[data-msg]").textContent = message;
+    const yes = confirmModal.querySelector("[data-yes]");
+    yes.onclick = () => { close(); onYes(); };
+    confirmModal.classList.replace("hidden", "grid");
+    yes.focus();
+  }
+
   document.querySelectorAll("form[data-confirm]").forEach(form =>
-    form.addEventListener("submit", e => { if (!confirm(form.dataset.confirm)) e.preventDefault(); })
+    form.addEventListener("submit", e => {
+      e.preventDefault();
+      askConfirm(form.dataset.confirm, () => form.submit());
+    })
   );
   document.querySelectorAll("[data-confirm-click]").forEach(btn =>
-    btn.addEventListener("click", e => { if (!confirm(btn.dataset.confirmClick)) e.preventDefault(); })
+    btn.addEventListener("click", e => {
+      e.preventDefault();
+      askConfirm(btn.dataset.confirmClick, () => {
+        if (btn.form) btn.form.submit();
+        else if (btn.href) window.location.href = btn.href;
+      });
+    })
   );
 })();

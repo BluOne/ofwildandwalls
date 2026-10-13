@@ -63,24 +63,25 @@
                           <thead>
                             <tr class="bg-sand">
                               <th class="th w-[74px]">Photo</th>
-                              <th class="th w-[17%]"><button type="button"
+                              <th class="th w-[14%]"><button type="button"
                                   class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]"
                                   data-key="cap">Caption <span class="text-amber"></span></button></th>
-                              <th class="th w-[12%]"><button type="button"
+                              <th class="th w-[10%]"><button type="button"
                                   class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]"
                                   data-key="slug">Slug <span class="text-amber"></span></button></th>
-                              <th class="th w-[11%]"><button type="button"
+                              <th class="th w-[9%]"><button type="button"
                                   class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]"
                                   data-key="category">Category <span class="text-amber"></span></button></th>
-                              <th class="th w-[14%]"><button type="button"
+                              <th class="th w-[11%]"><button type="button"
                                   class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]"
                                   data-key="collection">Collection <span class="text-amber"></span></button></th>
                               <th class="th w-[12%]"><button type="button"
                                   class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]"
                                   data-key="camera">Camera <span class="text-amber"></span></button></th>
-                              <th class="th w-[10%]"><button type="button"
+                              <th class="th w-[9%]"><button type="button"
                                   class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]"
                                   data-key="date">Date <span class="text-amber"></span></button></th>
+                              <th class="th w-[14%]">Variants</th>
                               <th class="th w-[9%]"><button type="button"
                                   class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]"
                                   data-key="live">Live <span class="text-amber"></span></button></th>
@@ -90,7 +91,7 @@
                           <tbody>
                             <% if (photos.length===0) { %>
                               <tr>
-                                <td colspan="9" class="td text-center py-8 text-mute">No photos found matching your
+                                <td colspan="10" class="td text-center py-8 text-mute">No photos found matching your
                                   criteria.</td>
                               </tr>
                               <% } %>
@@ -104,7 +105,7 @@
                                       data-date="<%= p.date %>" data-live="<%= p.live ? 1 : 0 %>">
                                       <td class="td">
                                         <div class="h-[34px] w-[46px] overflow-hidden rounded-[10px] bg-[#e6e0d7]">
-                                          <img src="<%= p.src %>" alt="<%= p.alt %>"
+                                          <img src="<%= p.thumb || p.src %>" alt="<%= p.alt %>" loading="lazy"
                                             class="block h-full w-full object-cover">
                                         </div>
                                       </td>
@@ -124,6 +125,18 @@
                                       </td>
                                       <td class="td whitespace-nowrap text-xs text-mute">
                                         <%= p.date || "-" %>
+                                      </td>
+                                      <td class="td text-[11px]">
+                                        <% if (p.variants && p.variants.length) { %>
+                                          <div class="flex flex-wrap gap-1">
+                                            <% p.variants.forEach(function (v) { %>
+                                              <a href="<%= v.url %>" target="_blank" rel="noopener"
+                                                class="rounded-full border border-line2 bg-white px-2 py-0.5 text-mute hover:bg-sand hover:text-ink"><%= v.width %></a>
+                                            <% }) %>
+                                          </div>
+                                        <% } else { %>
+                                          <span class="text-mute">-</span>
+                                        <% } %>
                                       </td>
                                       <td class="td">
                                         <form method="post" action="/admin/photos/<%= p.slug %>/toggle<%= rowReturn %>">

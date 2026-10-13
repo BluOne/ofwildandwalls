@@ -8,7 +8,9 @@ import { RowDataPacket } from "mysql2";
 import s3 from "../config/s3";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import type { AdminPhoto, MetaItem } from "../types/admin";
-import { IMMUTABLE_CACHE, tryCreateImageVariants, type ImageVariantInfo } from "../utils/imageVariants";
+import { canonicalCountry, canonicalState } from "../utils/place";
+import { resolveGearId } from "../utils/gear";
+import { IMMUTABLE_CACHE, s3KeyUrl, siteImageFields, tryCreateImageVariants, type ImageVariantInfo } from "../utils/imageVariants";
 
 interface DBPhotoRow extends RowDataPacket {
   id: number;
@@ -182,6 +184,15 @@ const mapDBPhotoToAdminPhoto = (row: DBPhotoRow, collectionDescriptions: Record<
       : `https://${s3Bucket}.s3.${s3Region}.amazonaws.com/${row.s3_key}`;
   }
 
+  // Resized WebP copies (empty list for photos without variants yet).
+  const img = siteImageFields(row as any, photoSrc);
+  const variants = String((row as any).variant_base ? (row as any).variant_widths || "" : "")
+    .split(",")
+    .map((w) => parseInt(w, 10))
+    .filter((w) => w > 0)
+    .sort((a, b) => a - b)
+    .map((w) => ({ width: w, url: s3KeyUrl(`${(row as any).variant_base}-${w}.webp`) }));
+
   const collectionName = row.collection || "";
   const aboutCollection = collectionDescriptions[collectionName] || "";
 
@@ -207,6 +218,8 @@ const mapDBPhotoToAdminPhoto = (row: DBPhotoRow, collectionDescriptions: Record<
     about: row.description || "",
     altNote: row.alt_note || "",
     src: photoSrc,
+    thumb: img.srcSmall,
+    variants,
     alt: row.alt || "",
     l: row.l || "",
     t: row.t || "",
@@ -652,6 +665,17 @@ const getPhotoBySlugAPI = async (req: Request, res: Response) => {
   }
 };
 
+/** Accepts DD/MM/YY(YY) or YYYY-MM-DD and returns YYYY-MM-DD ("" if unparseable). */
+const normalizeDate = (raw: unknown): string => {
+  const v = String(raw ?? "").trim();
+  if (!v) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const m = v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/);
+  if (!m) return v;
+  const year = m[3].length === 2 ? `20${m[3]}` : m[3];
+  return `${year}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+};
+
 const importPhotos = async (req: Request, res: Response) => {
   if (!req.file || !req.file.buffer) {
     return res.redirect("/admin/photos?error=Please+upload+a+CSV+file.");
@@ -676,16 +700,6 @@ const importPhotos = async (req: Request, res: Response) => {
         const getByName = (arr: any[], name: string, field: string = 'name') => {
           if (!name) return null;
           const match = arr.find((item: any) => item[field].toLowerCase() === name.toLowerCase());
-          return match ? match.id : null;
-        };
-
-        const getCameraLensId = (arr: any[], name: string) => {
-          if (!name) return null;
-          const q = name.toLowerCase().trim();
-          const match = arr.find((item: any) => {
-            const fullName = ((item.brand ? item.brand + ' ' : '') + (item.model || '')).toLowerCase().trim();
-            return fullName === q || (item.model || '').toLowerCase().trim() === q;
-          });
           return match ? match.id : null;
         };
 
@@ -740,9 +754,11 @@ const importPhotos = async (req: Request, res: Response) => {
             // Resolve IDs
             const category_id = getByName(categories, row.Category);
             const collection_id = getByName(collections, row.Collection);
-            const camera_id = getCameraLensId(cameras, row.Camera);
-            const lens_id = getCameraLensId(lenses, row.Lens);
-            const country_id = getCountryId(row.Country, row.State);
+            const camera_id = await resolveGearId("cameras", row.Camera, cameras as any[]);
+            const lens_id = await resolveGearId("lenses", row.Lens, lenses as any[]);
+            const countryName = canonicalCountry(row.Country);
+            const stateName = canonicalState(row.State);
+            const country_id = getCountryId(countryName, stateName);
 
             const meta: any[] = [];
             if (row.Camera) meta.push({ key: "Camera", value: row.Camera });
@@ -767,8 +783,8 @@ const importPhotos = async (req: Request, res: Response) => {
                 camera_id,
                 lens_id,
                 country_id,
-                row.State || "",
-                row.Date || "",
+                stateName,
+                normalizeDate(row.Date),
                 row.About || "",
                 row['Alt Note'] || "",
                 row['Alt Text'] || title,
