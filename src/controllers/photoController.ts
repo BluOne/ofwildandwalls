@@ -248,7 +248,7 @@ const SELECT_ADMIN_PHOTOS = `
 const getPhotos = async (req: Request, res: Response) => {
   try {
     const page = Math.max(parseInt(String(req.query.page || "1"), 10) || 1, 1);
-    const limit = 8;
+    const limit = 15;
     const search = String(req.query.search || req.query.q || "").trim();
 
     const [photoRows] = await pool.query<DBPhotoRow[]>(`${SELECT_ADMIN_PHOTOS} ORDER BY p.id DESC`);
