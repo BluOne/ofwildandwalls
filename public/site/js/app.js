@@ -427,6 +427,18 @@
     if (resetFiltersBtn) {
       resetFiltersBtn.classList.toggle("hidden", !hasActive);
     }
+
+    // Phones/tablets: the collapsed "Filters" button shows how many are on.
+    var countEl = document.getElementById("filtersCount");
+
+    if (countEl) {
+      var n = Object.keys(activeFilters).filter(function (type) {
+        return !!activeFilters[type];
+      }).length;
+
+      countEl.textContent = n ? String(n) : "";
+      countEl.classList.toggle("hidden", !n);
+    }
   }
 
   // How many photos match the currently active value for each filter type —
@@ -814,9 +826,13 @@
           "]</span>"
           : "";
 
+      // On the one-row bar (xl) the type word is dropped while a value is
+      // set — the icon identifies it — so several active filters still fit;
+      // it returns on 2xl screens and in the stacked phone/tablet panel.
+      btn.title = defaultLabels[type] + ": " + active;
       labelEl.innerHTML =
-        defaultLabels[type] +
-        ' <span class="ml-1.5 px-2 py-0.5 rounded-[6px] bg-black/5 dark:bg-white/10 text-[13px] text-ink dark:text-white font-medium">' +
+        '<span class="xl:hidden 2xl:inline">' + defaultLabels[type] + "</span>" +
+        ' <span class="ml-1.5 xl:ml-0 2xl:ml-1.5 px-2 py-0.5 rounded-[6px] bg-black/5 dark:bg-white/10 text-[13px] text-ink dark:text-white font-medium">' +
         esc(short) +
         countHtml +
         "</span>";
@@ -828,6 +844,7 @@
         "text-[#c8a03c]",
       );
     } else {
+      btn.removeAttribute("title");
       labelEl.textContent = defaultLabels[type];
 
       btn.classList.remove("text-ink", "dark:text-white", "text-[#c8a03c]");
