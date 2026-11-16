@@ -540,13 +540,15 @@
   // Whether one photo passes the active filters. `get(name)` returns its value
   // for a data attribute name (category, collection, camera, lens, country,
   // state, year) — from a .photo-item's data-* or a Flow photo object.
-  function photoMatchesFilters(get) {
+  // `skipType` leaves one filter type out — used to count the options of
+  // that type's own menu against all the other active filters.
+  function photoMatchesFilters(get, skipType) {
     var visible = true;
 
     Object.keys(activeFilters).forEach(function (type) {
       var val = activeFilters[type];
 
-      if (!val) return;
+      if (!val || type === skipType) return;
 
       if (type === "country") {
         var separatorIndex = val.indexOf("::");
@@ -571,6 +573,124 @@
     return visible;
   }
 
+  /* ── Faceted menus ──
+     Every live photo (with its filter fields) is embedded in the gallery
+     page as #flowData. Each menu's options and counts are recomputed from
+     the photos matching all the *other* active filters, so after picking
+     one filter the rest only offer values that still have photos. */
+  var facetPhotos;
+
+  function getFacetPhotos() {
+    if (facetPhotos !== undefined) return facetPhotos;
+
+    var el = document.getElementById("flowData");
+    facetPhotos = null;
+
+    if (el) {
+      try {
+        facetPhotos = JSON.parse(el.textContent || "[]");
+      } catch (e) {
+        facetPhotos = null;
+      }
+    }
+
+    return facetPhotos;
+  }
+
+  function lowerKey(v) {
+    return String(v || "").trim().toLowerCase();
+  }
+
+  // { lowercased value: photo count } for one filter type. Location keys
+  // are "country::name" / "state::name", matching activeFilters.country.
+  function facetCounts(type) {
+    var photos = getFacetPhotos();
+    var counts = {};
+
+    if (!photos) return null;
+
+    function add(k) {
+      if (k) counts[k] = (counts[k] || 0) + 1;
+    }
+
+    photos.forEach(function (p) {
+      if (!photoMatchesFilters(function (name) { return p[name]; }, type)) return;
+
+      if (type === "country") {
+        if (lowerKey(p.country)) add("country::" + lowerKey(p.country));
+        if (lowerKey(p.state)) add("state::" + lowerKey(p.state));
+      } else {
+        add(lowerKey(p[dataAttrMap[type]]));
+      }
+    });
+
+    return counts;
+  }
+
+  // Menu items from the API with counts replaced by faceted ones; options
+  // with no matching photos are dropped (except the currently selected one).
+  function facetItems(type, items) {
+    var counts = facetCounts(type);
+
+    if (!counts || !items) return items;
+
+    var active = lowerKey(activeFilters[type]);
+
+    function keep(name, count) {
+      return count > 0 || (active && lowerKey(name) === active);
+    }
+
+    // Grouped (cameras, lenses): { brand, models: [{ name, count }] }
+    if (items.length && items[0].models) {
+      return items
+        .map(function (g) {
+          return {
+            brand: g.brand,
+            models: (g.models || [])
+              .map(function (m) {
+                return { name: m.name, count: counts[lowerKey(m.name)] || 0 };
+              })
+              .filter(function (m) { return keep(m.name, m.count); }),
+          };
+        })
+        .filter(function (g) { return g.models.length > 0; });
+    }
+
+    // Flat (categories, collections, years): { title, count, parent? }
+    var mapped = items.map(function (it) {
+      return Object.assign({}, it, { count: counts[lowerKey(it.title)] || 0 });
+    });
+    var kept = mapped.filter(function (it) { return keep(it.title, it.count); });
+
+    // A parent category stays while any of its sub-categories does, so the
+    // children keep their place under it.
+    return mapped.filter(function (it) {
+      return (
+        kept.indexOf(it) !== -1 ||
+        kept.some(function (k) { return k.parent && k.parent === it.title; })
+      );
+    });
+  }
+
+  var facetMenus = {}; // filter type → re-render its menu
+
+  function refreshFacets() {
+    if (!getFacetPhotos()) return;
+
+    Object.keys(facetMenus).forEach(function (type) {
+      facetMenus[type]();
+    });
+
+    // Each active filter's pill shows how many photos are on screen for it.
+    Object.keys(activeFilters).forEach(function (type) {
+      if (!activeFilters[type]) return;
+
+      var counts = facetCounts(type);
+      activeFilterCounts[type] = counts[lowerKey(activeFilters[type])] || 0;
+      updateButtonLabel(type);
+    });
+  }
+
   function applyFilters() {
     var photos = document.querySelectorAll(".photo-item");
 
@@ -591,6 +711,7 @@
     if (flowRelayout) {
       flowRelayout();
     }
+    refreshFacets();
   }
 
   // Filters of different types combine with AND — a photo must match every
@@ -812,7 +933,12 @@
         return r.json();
       })
       .then(function (data) {
-        menuEl.innerHTML = renderFn(data[dataKey]);
+        var items = data[dataKey];
+
+        facetMenus[filterType] = function () {
+          menuEl.innerHTML = renderFn(facetItems(filterType, items));
+        };
+        facetMenus[filterType]();
 
         syncActiveCountFromMenu(menuEl, filterType);
       })
@@ -1033,17 +1159,51 @@
         return r.json();
       })
       .then(function (data) {
-        locationData = (data.countries || []).map(function (c) {
-          var total = c.states.reduce(function (a, s) {
-            return a + (s.count || 0);
-          }, 0);
+        var rawCountries = data.countries || [];
 
-          return {
-            country: c.country,
-            totalCount: total,
-            states: c.states,
-          };
-        });
+        // Counts follow the other active filters (see facetCounts); places
+        // with no matching photos are left out, except the selected one.
+        function computeLocationData() {
+          var counts = facetCounts("country");
+          var active = lowerKey(activeFilters.country);
+
+          locationData = rawCountries
+            .map(function (c) {
+              var states = c.states.map(function (s) {
+                return {
+                  name: s.name,
+                  count: counts ? counts["state::" + lowerKey(s.name)] || 0 : s.count || 0,
+                };
+              });
+
+              if (counts) {
+                states = states.filter(function (s) {
+                  return s.count > 0 || active === "state::" + lowerKey(s.name);
+                });
+              }
+
+              var total = counts
+                ? counts["country::" + lowerKey(c.country)] || 0
+                : states.reduce(function (a, s) { return a + (s.count || 0); }, 0);
+
+              return { country: c.country, totalCount: total, states: states };
+            })
+            .filter(function (c) {
+              return (
+                !counts ||
+                c.totalCount > 0 ||
+                c.states.length > 0 ||
+                active === "country::" + lowerKey(c.country)
+              );
+            });
+        }
+
+        computeLocationData();
+
+        facetMenus.country = function () {
+          computeLocationData();
+          rerender();
+        };
 
         // A country/state filter restored from the URL on load has no count
         // yet — now that locationData is here, look it up.
