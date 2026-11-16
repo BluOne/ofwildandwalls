@@ -83,27 +83,29 @@ router.post("/lenses/:index/delete", authenticate, lensController.deleteLens);
 
 // ---- Photo APIs -----------------------------------------------------------
 
-router.get("/api/photos", photoController.getPhotosAPI);
-router.get("/api/photos/:slug", photoController.getPhotoBySlugAPI);
+// These return unpublished photos, categories and collections too, so they
+// are for signed-in admins only. The public site uses /api/* (siteController).
+router.get("/api/photos", authenticate, photoController.getPhotosAPI);
+router.get("/api/photos/:slug", authenticate, photoController.getPhotoBySlugAPI);
 
 // ---- Category APIs --------------------------------------------------------
 
-router.get("/api/categories", categoryController.getCategoriesAPI);
+router.get("/api/categories", authenticate, categoryController.getCategoriesAPI);
 
 // ---- Collection APIs ------------------------------------------------------
 
-router.get("/api/collections", collectionController.getCollectionsAPI);
+router.get("/api/collections", authenticate, collectionController.getCollectionsAPI);
 
 // ---- Camera APIs ----------------------------------------------------------
 
-router.get("/api/cameras", cameraController.getCamerasAPI);
+router.get("/api/cameras", authenticate, cameraController.getCamerasAPI);
 
 // ---- Country APIs -----------------------------------------------------------
 
-router.get("/api/countries", countryController.getCountriesAPI);
+router.get("/api/countries", authenticate, countryController.getCountriesAPI);
 
 // ---- Lens APIs ------------------------------------------------------------
 
-router.get("/api/lenses", lensController.getLensesAPI);
+router.get("/api/lenses", authenticate, lensController.getLensesAPI);
 
 export default router;

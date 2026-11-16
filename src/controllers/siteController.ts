@@ -236,6 +236,7 @@ const SELECT_SITE_PHOTOS = `
     co.state AS country_state
   FROM photos p
   LEFT JOIN categories cat ON p.category_id = cat.id AND cat.live = 1
+    AND NOT EXISTS (SELECT 1 FROM categories hp WHERE hp.name = cat.parent AND hp.live = 0)
   LEFT JOIN categories catp ON catp.name = cat.parent AND catp.live = 1
   LEFT JOIN collections col ON p.collection_id = col.id AND col.live = 1
   LEFT JOIN cameras cam ON p.camera_id = cam.id
@@ -677,7 +678,12 @@ const getLensesAPI = async (req: Request, res: Response) => {
 const getCategoriesAPI = async (req: Request, res: Response) => {
   try {
     const [catRows] = await pool.query<RowDataPacket[]>(
-      "SELECT id, name AS title, parent, description FROM categories WHERE live = 1 ORDER BY name ASC"
+      // A sub-category of an unpublished parent is hidden too — otherwise the
+      // menu would list it under the hidden parent's name.
+      `SELECT c.id, c.name AS title, c.parent, c.description FROM categories c
+       WHERE c.live = 1
+         AND NOT EXISTS (SELECT 1 FROM categories hp WHERE hp.name = c.parent AND hp.live = 0)
+       ORDER BY c.name ASC`
     );
     const [photoRows] = await pool.query<RowDataPacket[]>(
       `${SELECT_SITE_PHOTOS} WHERE p.live = 1`

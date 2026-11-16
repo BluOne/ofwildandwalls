@@ -2478,11 +2478,16 @@
       img.draggable = false;
       img.decoding = "async";
       img.addEventListener("load", function () { img.classList.add("is-loaded"); });
+      // sizes uses the column width (not the tile's own width) so the browser
+      // picks the same srcset candidate the background preloader fetched.
       if (p.srcset) {
+        img.sizes = L.W + "px";
         img.srcset = p.srcset;
-        img.sizes = it.w + "px";
       }
       img.src = p.src;
+      // Already in the cache (preloaded, or seen earlier): show it at once,
+      // without the fade, so dragging back over it never flashes the colour.
+      if (img.complete && img.naturalWidth) img.classList.add("is-loaded", "no-fade");
       ph.appendChild(img);
       a.appendChild(ph);
 
@@ -2503,7 +2508,10 @@
     function render() {
       if (!L) return;
 
-      var vw = window.innerWidth, vh = window.innerHeight, m = 300;
+      // Tiles are mounted (and their images requested) this far beyond the
+      // screen edges, so a drag reveals photos that have already loaded.
+      var vw = window.innerWidth, vh = window.innerHeight;
+      var m = Math.round(Math.max(600, Math.max(vw, vh) * 0.75));
       var seen = new Set();
       var b0 = L.endless ? Math.floor((cx - m) / L.BW) : 0;
       var b1 = L.endless ? Math.floor((cx + vw + m) / L.BW) : 0;
@@ -2606,6 +2614,71 @@
       }
     }
 
+    /* ── background preloading ──
+       Once the first screen has loaded, every photo in the current set is
+       fetched quietly at the same size the tiles use, nearest to the camera
+       first. A drag then reveals images straight from the browser cache. */
+    var PRELOAD_CONCURRENCY = 4;
+    var preloaded = new Set(); // "W|slug" already requested
+    var preloadQueue = [];
+    var preloadInflight = 0;
+    var preloadTimer = null;
+
+    function canPreload() {
+      var c = navigator.connection;
+      return !(c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || "")));
+    }
+
+    function pumpPreload() {
+      while (preloadInflight < PRELOAD_CONCURRENCY && preloadQueue.length) {
+        var job = preloadQueue.shift();
+        var key = job.W + "|" + job.p.slug;
+        if (preloaded.has(key)) continue;
+        preloaded.add(key);
+        preloadInflight++;
+
+        var im = new Image();
+        im.decoding = "async";
+        if ("fetchPriority" in im) im.fetchPriority = "low";
+        im.onload = im.onerror = function () {
+          preloadInflight--;
+          pumpPreload();
+        };
+        if (job.p.srcset) {
+          im.sizes = job.W + "px";
+          im.srcset = job.p.srcset;
+        }
+        im.src = job.p.src;
+      }
+    }
+
+    function schedulePreload() {
+      clearTimeout(preloadTimer);
+      preloadQueue = [];
+      if (!L || !canPreload()) return;
+
+      // Nearest to the screen centre first (within one copy of the canvas).
+      var midX = cx + window.innerWidth / 2, midY = cy + window.innerHeight / 2;
+      var jobs = [];
+      L.cols.forEach(function (c) {
+        c.items.forEach(function (it) {
+          var dx = c.x + L.W / 2 - midX, dy = c.stag + it.y + it.h / 2 - midY;
+          if (L.endless) {
+            dx = ((dx % L.BW) + L.BW * 1.5) % L.BW - L.BW / 2;
+            dy = ((dy % c.period) + c.period * 1.5) % c.period - c.period / 2;
+          }
+          jobs.push({ p: it.p, W: L.W, d: dx * dx + dy * dy });
+        });
+      });
+      jobs.sort(function (a, b) { return a.d - b.d; });
+
+      // Give the photos on screen a head start before filling the cache.
+      preloadTimer = setTimeout(function () {
+        preloadQueue = jobs;
+        pumpPreload();
+      }, 1200);
+    }
+
     function rebuild(keepCam) {
       var list = filteredPhotos();
 
@@ -2633,6 +2706,7 @@
 
       first = true;
       dirty = true;
+      schedulePreload();
     }
 
     /* ── interaction ── */
