@@ -77,81 +77,8 @@
                                       <input class="field mt-1.5" name="cap" value="<%= photo.cap %>"
                                         placeholder="Morning Patrol">
                                     </label>
-                                    <label class="label">Caption
-                                      <input class="field mt-1.5" name="ref" value="<%= photo.ref %>" placeholder="">
-                                    </label>
-                                    <label class="label">Category
-                                      <select class="field mt-1.5" name="category_id">
-                                        <option value="">Select category</option>
-                                        <% categories.forEach(function (c) { %>
-                                          <option value="<%= c.id %>" <%=Number(photo.category_id)===Number(c.id)
-                                            ? "selected" : "" %>><%= c.title %>
-                                          </option>
-                                          <% }); %>
-                                      </select>
-                                    </label>
-                                    <label class="label">Collection
-                                      <select class="field mt-1.5" name="collection_id">
-                                        <option value="">Select collection</option>
-                                        <% (typeof collections !=="undefined" ? collections : []).forEach(function (col)
-                                          { %>
-                                          <option value="<%= col.id %>" <%=Number(photo.collection_id)===Number(col.id)
-                                            ? "selected" : "" %>><%= col.title || col.name %>
-                                          </option>
-                                          <% }); %>
-                                      </select>
-                                    </label>
-                                    <label class="label">Camera <span class="text-red-500">*</span>
-                                      <select class="field mt-1.5" name="camera_id" required>
-                                        <option value="">Select camera</option>
-                                        <% (typeof cameras !=="undefined" ? cameras : []).forEach(function (cam) { const
-                                          camName=cam.brand ? (cam.brand + ' ' + cam.model) : cam.model; %>
-                                          <option value="<%= cam.id %>" <%=Number(photo.camera_id)===Number(cam.id)
-                                            ? "selected" : "" %>><%= camName %>
-                                          </option>
-                                          <% }); %>
-                                      </select>
-                                    </label>
-                                    <label class="label">Lens <span class="text-red-500">*</span>
-                                      <select class="field mt-1.5" name="lens_id" required>
-                                        <option value="">Select lens</option>
-                                        <% (typeof lenses !=="undefined" ? lenses : []).forEach(function (l) { const
-                                          lensName=l.brand ? (l.brand + ' ' + l.model) : l.model; %>
-                                          <option value="<%= l.id %>" <%=Number(photo.lens_id)===Number(l.id)
-                                            ? "selected" : "" %>><%= lensName %>
-                                          </option>
-                                          <% }); %>
-                                      </select>
-                                    </label>
-                                    <label class="label">Date <span class="text-red-500">*</span>
-                                      <input class="field mt-1.5" type="date" name="date" value="<%= photo.date %>"
-                                        required>
-                                    </label>
-                                    <label class="label">Country <span class="text-red-500">*</span>
-                                      <select id="country-select" class="field mt-1.5" required>
-                                        <option value="">Select country</option>
-                                      </select>
-                                    </label>
-                                    <label class="label">State / Region <span class="text-red-500">*</span>
-                                      <select id="state-select" name="country_id" class="field mt-1.5" required>
-                                        <option value="">Select state</option>
-                                      </select>
-                                      <input type="hidden" id="state-hidden" name="state"
-                                        value="<%= photo.state || '' %>">
-                                    </label>
-                                    <label class="label">Location
-                                      <input class="field mt-1.5" name="location" value="<%= photo.location || '' %>"
-                                        placeholder="Spiti, Himachal Pradesh">
-                                    </label>
-                                    <label class="label col-span-2">Settings (Field Data)
-                                      <input class="field mt-1.5" name="settings" value="<%= photo.settings || '' %>"
-                                        placeholder="1/125 · f/11 · ISO 100">
-                                    </label>
+                                    <%- include("partials/photo-details-fields", { photo: photo }) %>
                                   </div>
-                                  <label class="label mt-3.5">About the photo
-                                    <textarea class="field mt-1.5 resize-y" name="about" rows="3"
-                                      placeholder="One or two lines about the moment."><%= photo.about %></textarea>
-                                  </label>
                                 </section>
                               </div>
 
@@ -184,9 +111,9 @@
                                     role="alert">Choose an image for this photo.</p>
 
                                   <input type="hidden" name="src" value="<%= photo.src %>">
-                                  <label class="label mt-3.5">Alt text <span class="text-red-500">*</span>
+                                  <label class="label mt-3.5">Alt text
                                     <input class="field mt-1.5" name="alt" value="<%= photo.alt %>"
-                                      placeholder="Tiger walking" required>
+                                      placeholder="Tiger walking">
                                   </label>
                                 </section>
                               </div>
@@ -249,64 +176,6 @@
       })();
     </script>
 
-    <div id="country-data" style="display:none;"
-      data-countries="<%= JSON.stringify(typeof countries !== 'undefined' ? countries : []) %>"
-      data-selected="<%= photo.country_id || '' %>"></div>
-    <script>
-      (function () {
-        const dataEl = document.getElementById('country-data');
-        const countries = dataEl && dataEl.getAttribute('data-countries') ? JSON.parse(dataEl.getAttribute('data-countries')) : [];
-        const selectedAttr = dataEl ? dataEl.getAttribute('data-selected') : '';
-        const selectedCountryId = selectedAttr ? Number(selectedAttr) : null;
-        const countrySelect = document.getElementById('country-select');
-        const stateSelect = document.getElementById('state-select');
-        const stateHidden = document.getElementById('state-hidden');
-
-        if (!countrySelect || !stateSelect || !stateHidden) return;
-
-        function syncStateHidden() {
-          const opt = stateSelect.options[stateSelect.selectedIndex];
-          stateHidden.value = (opt && opt.value) ? opt.textContent : '';
-        }
-
-        const names = [...new Set(countries.map(c => c.country))].sort();
-        names.forEach(function (name) {
-          const opt = document.createElement('option');
-          opt.value = name;
-          opt.textContent = name;
-          countrySelect.appendChild(opt);
-        });
-
-        function populateStates(countryName, preselectId) {
-          stateSelect.innerHTML = '<option value="">Select state</option>';
-          countries
-            .filter(c => c.country === countryName)
-            .forEach(function (c) {
-              const opt = document.createElement('option');
-              opt.value = c.id;
-              opt.textContent = c.state;
-              if (preselectId && Number(preselectId) === Number(c.id)) opt.selected = true;
-              stateSelect.appendChild(opt);
-            });
-        }
-
-        countrySelect.addEventListener('change', function () {
-          populateStates(countrySelect.value, null);
-          syncStateHidden();
-        });
-
-        stateSelect.addEventListener('change', syncStateHidden);
-
-        if (selectedCountryId) {
-          const match = countries.find(c => Number(c.id) === selectedCountryId);
-          if (match) {
-            countrySelect.value = match.country;
-            populateStates(match.country, selectedCountryId);
-            syncStateHidden();
-          }
-        }
-      })();
-    </script>
 
     <script>
       (function () {

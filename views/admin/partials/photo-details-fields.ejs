@@ -1,0 +1,208 @@
+<%# Add/Edit photo fields from Caption through Tags, as cells of the caller's 2-column grid.
+  Expects photo, categories, collections, cameras, lenses, countries. %>
+<label class="label">Caption
+  <input class="field mt-1.5" name="ref" value="<%= photo.ref %>" placeholder="">
+</label>
+<%
+  // A searchable multi-select of existing values (chips for the ticked ones).
+  // `name` is the posted field; ticked items are listed first.
+  function multiPicker(label, name, list, selected) {
+    var sel = selected.map(Number);
+    var sorted = list.slice().sort(function (x, y) {
+      return (sel.indexOf(Number(y.id)) !== -1) - (sel.indexOf(Number(x.id)) !== -1);
+    });
+%>
+<div class="label" data-multi-picker>
+  <div class="flex items-center justify-between">
+    <span><%= label %></span>
+    <span class="text-[11px]" data-pick-count></span>
+  </div>
+  <div class="mt-1.5 flex flex-wrap gap-1.5 empty:hidden" data-pick-chips></div>
+  <div class="mt-1.5 rounded-xl border border-line2 bg-white">
+    <input type="search" class="w-full rounded-t-xl border-b border-line2 bg-transparent px-3.5 py-2 text-[13px] text-ink outline-none"
+      placeholder="Search <%= label.toLowerCase() %>..." data-pick-search autocomplete="off">
+    <div class="max-h-48 space-y-0.5 overflow-y-auto p-1.5">
+      <% sorted.forEach(function (item) { %>
+        <label class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] text-ink hover:bg-sand" data-pick-item>
+          <input type="checkbox" name="<%= name %>" value="<%= item.id %>"
+            <%= sel.indexOf(Number(item.id)) !== -1 ? "checked" : "" %>>
+          <span data-pick-name><%= item.title || item.name %></span>
+        </label>
+      <% }); %>
+      <p class="hidden px-2 py-1.5 text-[12px] text-mute" data-pick-empty>No <%= label.toLowerCase() %> match.</p>
+    </div>
+  </div>
+</div>
+<% } %>
+<label class="label">Category
+  <select class="field mt-1.5" name="category_id">
+    <option value="">Select category</option>
+    <% var selCat = Number((photo.category_ids && photo.category_ids[0]) || photo.category_id); %>
+    <% categories.forEach(function (c) { %>
+      <option value="<%= c.id %>" <%= selCat === Number(c.id) ? "selected" : "" %>><%= c.title %></option>
+    <% }); %>
+  </select>
+</label>
+<% multiPicker("Collections", "collection_ids", (typeof collections !== "undefined" ? collections : []),
+     photo.collection_ids || (photo.collection_id ? [photo.collection_id] : [])); %>
+<label class="label">Camera
+  <select class="field mt-1.5" name="camera_id">
+    <option value="">Select camera</option>
+    <% (typeof cameras !=="undefined" ? cameras : []).forEach(function (cam) { const
+      camName=cam.brand ? (cam.brand + ' ' + cam.model) : cam.model; %>
+      <option value="<%= cam.id %>" <%=Number(photo.camera_id)===Number(cam.id)
+        ? "selected" : "" %>><%= camName %>
+      </option>
+      <% }); %>
+  </select>
+</label>
+<label class="label">Lens
+  <select class="field mt-1.5" name="lens_id">
+    <option value="">Select lens</option>
+    <% (typeof lenses !=="undefined" ? lenses : []).forEach(function (l) { const
+      lensName=l.brand ? (l.brand + ' ' + l.model) : l.model; %>
+      <option value="<%= l.id %>" <%=Number(photo.lens_id)===Number(l.id)
+        ? "selected" : "" %>><%= lensName %>
+      </option>
+      <% }); %>
+  </select>
+</label>
+<label class="label">Date
+  <input class="field mt-1.5" type="date" name="date" value="<%= photo.date %>">
+</label>
+<label class="label">Country
+  <select id="country-select" class="field mt-1.5">
+    <option value="">Select country</option>
+  </select>
+</label>
+<label class="label">State / Region
+  <select id="state-select" name="country_id" class="field mt-1.5">
+    <option value="">Select state</option>
+  </select>
+  <input type="hidden" id="state-hidden" name="state"
+    value="<%= photo.state || '' %>">
+</label>
+<label class="label">Location
+  <input class="field mt-1.5" name="location" value="<%= photo.location || '' %>"
+    placeholder="Spiti, Himachal Pradesh">
+</label>
+<label class="label col-span-2">Settings (Field Data)
+  <input class="field mt-1.5" name="settings" value="<%= photo.settings || '' %>"
+    placeholder="1/125 · f/11 · ISO 100">
+</label>
+<label class="label col-span-2">About the photo
+  <textarea class="field mt-1.5 resize-y" name="about" rows="3"
+    placeholder="One or two lines about the moment."><%= photo.about %></textarea>
+</label>
+<label class="label col-span-2">Tags
+  <input class="field mt-1.5" name="tags" value="<%= photo.tags || '' %>"
+    placeholder="tiger, big cat, corbett, monsoon" autocomplete="off">
+  <span class="mt-1 block text-[11px]">Separate tags with commas.</span>
+</label>
+<script>
+  document.querySelectorAll('[data-multi-picker]').forEach(function (root) {
+    const search = root.querySelector('[data-pick-search]');
+    const chips = root.querySelector('[data-pick-chips]');
+    const count = root.querySelector('[data-pick-count]');
+    const empty = root.querySelector('[data-pick-empty]');
+    const items = Array.from(root.querySelectorAll('[data-pick-item]'));
+
+    function renderChips() {
+      chips.innerHTML = '';
+      let n = 0;
+      items.forEach(function (item) {
+        const box = item.querySelector('input');
+        if (!box.checked) return;
+        n++;
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'inline-flex items-center gap-1 rounded-full bg-pine px-2.5 py-1 text-[11px] text-cream hover:bg-pine2';
+        chip.textContent = item.querySelector('[data-pick-name]').textContent.trim();
+        chip.title = 'Remove';
+        const x = document.createElement('span');
+        x.textContent = '×';
+        x.className = 'text-[13px] leading-none opacity-70';
+        chip.appendChild(x);
+        chip.addEventListener('click', function () { box.checked = false; renderChips(); });
+        chips.appendChild(chip);
+      });
+      count.textContent = n ? n + ' selected' : '';
+    }
+
+    function filter() {
+      const q = search.value.trim().toLowerCase();
+      let shown = 0;
+      items.forEach(function (item) {
+        const match = !q || item.querySelector('[data-pick-name]').textContent.toLowerCase().includes(q);
+        item.classList.toggle('hidden', !match);
+        if (match) shown++;
+      });
+      empty.classList.toggle('hidden', shown > 0);
+    }
+
+    items.forEach(function (item) { item.querySelector('input').addEventListener('change', renderChips); });
+    search.addEventListener('input', filter);
+    // Enter in the search box shouldn't submit the photo form.
+    search.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); });
+    renderChips();
+  });
+</script>
+
+<div id="country-data" style="display:none;"
+  data-countries="<%= JSON.stringify(typeof countries !== 'undefined' ? countries : []) %>"
+  data-selected="<%= photo.country_id || '' %>"></div>
+<script>
+  (function () {
+    const dataEl = document.getElementById('country-data');
+    const countries = dataEl && dataEl.getAttribute('data-countries') ? JSON.parse(dataEl.getAttribute('data-countries')) : [];
+    const selectedAttr = dataEl ? dataEl.getAttribute('data-selected') : '';
+    const selectedCountryId = selectedAttr ? Number(selectedAttr) : null;
+    const countrySelect = document.getElementById('country-select');
+    const stateSelect = document.getElementById('state-select');
+    const stateHidden = document.getElementById('state-hidden');
+
+    if (!countrySelect || !stateSelect || !stateHidden) return;
+
+    function syncStateHidden() {
+      const opt = stateSelect.options[stateSelect.selectedIndex];
+      stateHidden.value = (opt && opt.value) ? opt.textContent : '';
+    }
+
+    const names = [...new Set(countries.map(c => c.country))].sort();
+    names.forEach(function (name) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      countrySelect.appendChild(opt);
+    });
+
+    function populateStates(countryName, preselectId) {
+      stateSelect.innerHTML = '<option value="">Select state</option>';
+      countries
+        .filter(c => c.country === countryName)
+        .forEach(function (c) {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = c.state;
+          if (preselectId && Number(preselectId) === Number(c.id)) opt.selected = true;
+          stateSelect.appendChild(opt);
+        });
+    }
+
+    countrySelect.addEventListener('change', function () {
+      populateStates(countrySelect.value, null);
+      syncStateHidden();
+    });
+
+    stateSelect.addEventListener('change', syncStateHidden);
+
+    if (selectedCountryId) {
+      const match = countries.find(c => Number(c.id) === selectedCountryId);
+      if (match) {
+        countrySelect.value = match.country;
+        populateStates(match.country, selectedCountryId);
+        syncStateHidden();
+      }
+    }
+  })();
+</script>

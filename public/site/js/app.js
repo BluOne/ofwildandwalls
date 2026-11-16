@@ -17,26 +17,13 @@
 
   /* ── Flow / Grid scroll position memory ───────────────────────────── */
 
-  var FLOW_SCROLL_KEY = "oww:flow-scroll";
+  var FLOW_CAMERA_KEY = "oww:flow-camera";
   var GRID_SCROLL_KEY = "oww:grid-scroll";
 
   if ("scrollRestoration" in history) {
     history.scrollRestoration = "manual";
   }
 
-  function saveFlowScrollPosition() {
-    sessionStorage.setItem(FLOW_SCROLL_KEY, String(window.scrollY));
-  }
-
-  function getFlowScrollPosition() {
-    var value = sessionStorage.getItem(FLOW_SCROLL_KEY);
-
-    if (value === null) {
-      return 0;
-    }
-
-    return parseInt(value, 10) || 0;
-  }
 
   function saveGridScrollPosition(strip) {
     sessionStorage.setItem(GRID_SCROLL_KEY, String(strip.scrollLeft));
@@ -52,7 +39,12 @@
     return parseInt(value, 10) || 0;
   }
 
-  if (localStorage.getItem(KEY) === "dark") root.classList.add("dark");
+  // Dark is the default; light only when the visitor picked it with the toggle.
+  var savedTheme = null;
+  try {
+    savedTheme = localStorage.getItem(KEY);
+  } catch (err) {}
+  if (savedTheme !== "light") root.classList.add("dark");
 
   // Desktop header and the mobile nav panel each have their own copy of this
   // button (same markup, different layout context) — wire both to the same toggle.
@@ -95,7 +87,7 @@
       return;
     }
 
-    root.classList.toggle("dark", saved === "dark");
+    root.classList.toggle("dark", saved !== "light");
     updateThemeIcons();
   }
 
@@ -457,10 +449,7 @@
     var pairs = qs.split("&");
     var hasActive = false;
     pairs.forEach(function (pair) {
-      // Only one filter is ever active at a time — an older shared link with
-      // several filter params keeps just the first one it finds.
-      if (hasActive) return;
-
+      // Several filters can be active at once (combined with AND).
       var kv = pair.split("=");
       if (kv.length === 2) {
         var key = decodeURIComponent(kv[0]);
@@ -548,60 +537,53 @@
    * own script below), so a hidden photo would leave a hole — hence the
    * flowRelayout() re-run at the end.
    */
+  // Whether one photo passes the active filters. `get(name)` returns its value
+  // for a data attribute name (category, collection, camera, lens, country,
+  // state, year) — from a .photo-item's data-* or a Flow photo object.
+  function photoMatchesFilters(get) {
+    var visible = true;
+
+    Object.keys(activeFilters).forEach(function (type) {
+      var val = activeFilters[type];
+
+      if (!val) return;
+
+      if (type === "country") {
+        var separatorIndex = val.indexOf("::");
+
+        if (separatorIndex === -1) {
+          visible = false;
+          return;
+        }
+
+        var prefix = val.slice(0, separatorIndex);
+        var slug = val.slice(separatorIndex + 2).toLowerCase();
+        var field = prefix === "country" ? "country" : "state";
+
+        if ((get(field) || "").trim().toLowerCase() !== slug) {
+          visible = false;
+        }
+      } else if ((get(dataAttrMap[type]) || "").trim().toLowerCase() !== val.toLowerCase()) {
+        visible = false;
+      }
+    });
+
+    return visible;
+  }
+
   function applyFilters() {
     var photos = document.querySelectorAll(".photo-item");
 
     photos.forEach(function (el) {
       // The detail page's main photo also uses .photo-item for styling,
-      // but it is not part of the filterable Flow/Grid gallery.
-      if (el.querySelector("#mainPhoto")) {
+      // but it is not part of the filterable Flow/Grid gallery. Flow's own
+      // tiles are rebuilt from the filtered set by flowRelayout() below.
+      if (el.querySelector("#mainPhoto") || el.classList.contains("flow-tile")) {
         return;
       }
 
-      var visible = true;
-
-      Object.keys(activeFilters).forEach(function (type) {
-        var val = activeFilters[type];
-
-        if (!val) return;
-
-        if (type === "country") {
-          var separatorIndex = val.indexOf("::");
-
-          if (separatorIndex === -1) {
-            visible = false;
-            return;
-          }
-
-          var prefix = val.slice(0, separatorIndex);
-          var slug = val.slice(separatorIndex + 2).toLowerCase();
-
-          if (prefix === "country") {
-            var photoCountry = (el.getAttribute("data-country") || "")
-              .trim()
-              .toLowerCase();
-
-            if (photoCountry !== slug) {
-              visible = false;
-            }
-          } else {
-            var photoState = (el.getAttribute("data-state") || "")
-              .trim()
-              .toLowerCase();
-
-            if (photoState !== slug) {
-              visible = false;
-            }
-          }
-        } else {
-          var photoVal = (el.getAttribute("data-" + dataAttrMap[type]) || "")
-            .trim()
-            .toLowerCase();
-
-          if (photoVal !== val.toLowerCase()) {
-            visible = false;
-          }
-        }
+      var visible = photoMatchesFilters(function (name) {
+        return el.getAttribute("data-" + name);
       });
 
       el.style.display = visible ? "" : "none";
@@ -611,21 +593,14 @@
     }
   }
 
-  // Only one filter can be active at a time — picking a new one clears
-  // whichever else was set, refreshing its button back to its default label.
-  function clearOtherFilters(exceptType) {
-    Object.keys(activeFilters).forEach(function (type) {
-      if (type !== exceptType && activeFilters[type]) {
-        activeFilters[type] = null;
-        activeFilterCounts[type] = null;
-
-        updateButtonLabel(type);
-      }
-    });
-  }
-
+  // Filters of different types combine with AND — a photo must match every
+  // active one. Picking a value replaces only that type's previous value;
+  // picking the already-active value again clears that filter.
   function setFilter(type, value, count) {
-    clearOtherFilters(type);
+    if (activeFilters[type] === value) {
+      clearFilter(type);
+      return;
+    }
 
     activeFilters[type] = value;
     activeFilterCounts[type] = typeof count === "number" ? count : null;
@@ -908,34 +883,19 @@
 
     var locationData = [];
     var expandedSet = {};
-    var searchVal = "";
 
     function buildLocationHTML() {
-      var filtered = locationData.filter(function (c) {
-        if (!searchVal) return true;
-
-        var q = searchVal.toLowerCase();
-
-        if (c.country.toLowerCase().includes(q)) {
-          return true;
-        }
-
-        return c.states.some(function (s) {
-          return s.name.toLowerCase().includes(q);
-        });
-      });
-
-      if (filtered.length === 0) {
+      if (locationData.length === 0) {
         return (
           '<p class="px-4 py-3 text-[13px] text-ink/40 dark:text-white/40 italic">' +
-          "No results" +
+          "No locations yet" +
           "</p>"
         );
       }
 
-      return filtered
+      return locationData
         .map(function (c) {
-          var isExpanded = !!expandedSet[c.country] || searchVal.length > 0;
+          var isExpanded = !!expandedSet[c.country];
 
           var activeVal = activeFilters.country;
 
@@ -1100,28 +1060,11 @@
           '<span class="text-[10px] tracking-[0.12em] uppercase font-semibold text-ink/40 dark:text-white/40">Location</span>' +
           '<button type="button" id="oww-loc-clear" class="text-[12px] text-ink/50 dark:text-white/50 hover:text-ink dark:hover:text-white transition-colors">Clear</button>' +
           "</div>" +
-          '<div class="px-3 pb-2">' +
-          '<input id="oww-loc-search" type="text" placeholder="Search countries or cities…" autocomplete="off" class="w-full rounded-lg border border-ink/10 dark:border-white/10 bg-ink/[0.03] dark:bg-white/[0.05] px-3 py-1.5 text-[13px] text-ink dark:text-white placeholder:text-ink/30 dark:placeholder:text-white/30 outline-none focus:border-ink/30 dark:focus:border-white/30 transition-colors">' +
-          "</div>" +
           '<p class="px-3 pb-1 text-[10px] tracking-[0.1em] uppercase font-semibold text-ink/35 dark:text-white/35">Countries</p>' +
           '<div id="oww-loc-list" class="max-h-[260px] overflow-y-auto px-1 pb-1">' +
           buildLocationHTML() +
           "</div>" +
           '<p class="px-3 py-2 text-[11px] text-ink/35 dark:text-white/35 border-t border-ink/8 dark:border-white/8 mt-1">Select a country for all its photographs, or expand it to choose a city.</p>';
-
-        var searchInput = menuEl.querySelector("#oww-loc-search");
-
-        if (searchInput) {
-          searchInput.addEventListener("input", function () {
-            searchVal = this.value.trim();
-
-            rerender();
-          });
-
-          searchInput.addEventListener("click", function (e) {
-            e.stopPropagation();
-          });
-        }
 
         var clearBtn = menuEl.querySelector("#oww-loc-clear");
 
@@ -1175,13 +1118,9 @@
 
             var newFilter = "country::" + val;
 
-            clearOtherFilters("country");
-
             activeFilters.country = newFilter;
           } else {
             var newFilter = "state::" + val;
-
-            clearOtherFilters("country");
 
             activeFilters.country = newFilter;
           }
@@ -1215,16 +1154,6 @@
       });
 
       menuEl.classList.toggle("hidden", !isHidden);
-
-      if (!menuEl.classList.contains("hidden")) {
-        var si = menuEl.querySelector("#oww-loc-search");
-
-        if (si) {
-          setTimeout(function () {
-            si.focus();
-          }, 50);
-        }
-      }
     });
 
     menuEl.addEventListener("click", function (e) {
@@ -1972,21 +1901,23 @@
     });
   }
 
-  /* ── Grid view — normal wheel scrolls sideways ───────────────────── */
+  /* ── Grid view — the wheel and touchpad swipes scroll the strip ──── */
 
   var strip = document.getElementById("gridStrip");
 
   if (strip) {
+    // Both a normal (vertical) wheel and a sideways touchpad swipe move the
+    // strip, and every wheel event is handled here. Left to the browser, a
+    // sideways swipe that runs past the first or last photo is taken by
+    // Chrome as "go back / forward" and shows its blue arrow.
     strip.addEventListener(
       "wheel",
       function (e) {
-        if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) {
-          return;
-        }
-
         e.preventDefault();
 
-        strip.scrollLeft += e.deltaY;
+        var d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+
+        strip.scrollLeft += e.deltaMode === 1 ? d * 32 : d;
       },
       {
         passive: false,
@@ -2411,580 +2342,467 @@
 
   //
 
-  /* ── Flow view — scattered grid layout + infinite scroll ─────────── */
-
+  /* ── Flow view — endless drag canvas ─────────────────────────────── */
+  /*
+   * Layout:
+   *  1. Column width W is fixed per breakpoint; a photo's height is W / its
+   *     aspect ratio (no cropping). Taller than 4:5? Its height is capped at
+   *     1.25·W and it narrows, centred in its column.
+   *  2. Each photo, in order, goes into the currently shortest column.
+   *  3. If the set fills ~2 screens each way, the block tiles endlessly in
+   *     every direction; each repeat of a column is shifted vertically so
+   *     repeats never line up. Otherwise it's shown once, centred.
+   * Only tiles near the screen are in the DOM. The tiles are .photo-item
+   * links, so the shared "+" cursor and carrying filters into the photo
+   * page work as for Grid.
+   */
   (function () {
-    var canvas = document.getElementById("flowCanvas");
+    var field = document.getElementById("flowField");
+    var dataEl = document.getElementById("flowData");
 
-    var sentinel = document.getElementById("flowSentinel");
-
-    if (!canvas || !sentinel) {
+    if (!field || !dataEl) {
       return;
     }
 
-    /* ── Remember Flow's vertical scroll position ─────────────────── */
+    var section = document.getElementById("flowView");
+    var hint = document.getElementById("flowHint");
+    var emptyMsg = document.getElementById("flowEmpty");
+    var ALL = [];
 
-    window.addEventListener(
-      "scroll",
-      function () {
-        // Switching to the Grid tab hides #flowView, which collapses the
-        // document's scrollable height and forces the browser to snap
-        // window.scrollY to 0 — that spurious scroll event must not
-        // overwrite the position we still want to restore on switching back.
-        if (canvas.offsetParent === null) {
-          return;
+    try {
+      ALL = JSON.parse(dataEl.textContent || "[]");
+    } catch (e) {
+      ALL = [];
+    }
+
+    var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var canHover = window.matchMedia("(hover: hover)").matches;
+    var DRIFT_DELAY = canHover ? 800 : 250;
+
+    var L = null; // current layout
+    var cx = 0, cy = 0, vx = 0, vy = 0;
+    var dirty = true, first = true;
+    var live = new Map();
+    var drag = null, lastInput = performance.now(), drift = 0;
+    var dragged = false; // the last press was a drag, not a click
+    var onEl = null;
+
+    function isShown() {
+      return !section.classList.contains("hidden");
+    }
+
+    function metrics() {
+      var vw = window.innerWidth;
+
+      if (vw < 768) {
+        var mw = Math.round(Math.min(168, Math.max(124, vw / 2.5)));
+        return { m: true, W: mw, GX: 26, GY: 34, CAP: 24, C: 7 };
+      }
+
+      // Same number of columns visible on any desktop/tablet size; gaps scale with W.
+      var n = vw < 1200 ? 4 : 5;
+      var W = Math.round(Math.min(420, vw / (n * 1.3)));
+      return { m: false, W: W, GX: Math.round(W * 0.3), GY: Math.round(W * 0.28), CAP: 26, C: 11 };
+    }
+
+    function layout(list) {
+      var M = metrics();
+      var W = M.W;
+      var C = Math.min(M.C, Math.max(1, list.length));
+      var cols = [];
+      var i, k;
+
+      for (i = 0; i < C; i++) cols.push({ h: 0, items: [] });
+
+      list.forEach(function (p) {
+        // Photos without a stored size fall back to 3:2.
+        var r = p.w && p.h ? p.w / p.h : 1.5;
+        var h = W / r, w = W;
+
+        if (h > W * 1.25) {
+          h = W * 1.25;
+          w = h * r;
         }
 
-        saveFlowScrollPosition();
-      },
-      {
-        passive: true,
-      },
-    );
-
-    function restoreFlowScrollPosition() {
-      var savedPosition = getFlowScrollPosition();
-
-      window.scrollTo(0, savedPosition);
-    }
-    /*
-     * IMPORTANT:
-     *
-     * #flowCanvas is a sparse scatter on a fixed grid, not a packed
-     * masonry: roughly half the cells are deliberately left empty. The
-     * grid is FLOW_COLS columns wide with a fixed row step, and every
-     * photo is one of two sizes:
-     *
-     *  - small: 1 column wide, reserves 1 row
-     *  - large: 2 columns wide, reserves 2 rows
-     *
-     * Width is fixed by the size. A large tile fills its whole 2-row box
-     * (cropped to fit); a small tile's height follows its photo's own
-     * aspect ratio, capped to its row (see flowSizeTile).
-     *
-     * Photos are placed in DOM order, row by row. Each row only takes a
-     * few new tiles (FLOW_ROW_QUOTA), dropped into seeded-random free
-     * columns, with columns that don't touch a neighbor weighted higher —
-     * that's what leaves the white space around each photo. Everything is
-     * seeded (by slug, and by row index), so re-running the layout on
-     * resize, filter or infinite-scroll puts every photo back in the
-     * same cell.
-     *
-     * Placement only depends on each photo's size, not on its image, so
-     * it runs immediately; once an image loads, only that tile's height
-     * is corrected (flowSizeTile) — nothing else moves.
-     */
-
-    // Seeded PRNG (mulberry32) — deterministic per seed.
-    function flowRng(seed) {
-      var t = seed + 0x6d2b79f5;
-
-      return function () {
-        t = Math.imul(t ^ (t >>> 15), t | 1);
-        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-      };
-    }
-
-    function flowSeed(slug) {
-      var h = 0;
-
-      for (var i = 0; i < slug.length; i++) {
-        h = (Math.imul(31, h) + slug.charCodeAt(i)) | 0;
-      }
-
-      return h;
-    }
-
-    // Proportions measured from the reference design: column gap is 20%
-    // of a column's width, the row step is 1.3x the column step, ~37% of
-    // photos are large, and about 2-3 photos start on each row (of 8
-    // columns — scaled down for narrower grids).
-    var FLOW_GAP_RATIO = 0.2;
-    var FLOW_ROW_RATIO = 1.3;
-    var FLOW_LARGE_CHANCE = 0.37;
-    var FLOW_ROW_QUOTA = [1, 2, 2, 2, 3, 3, 4];
-    var FLOW_LOOSE_WEIGHT = 4;
-
-    function flowColumnCount() {
-      var w = window.innerWidth;
-
-      if (w <= 560) {
-        return 4;
-      }
-
-      return 8;
-    }
-
-    var flowCols = 8;
-    var flowColWidth = 0;
-    var flowGap = 0;
-    var flowRowStep = 0;
-    var flowPadLeft = 0;
-    var flowPadTop = 0;
-    var flowOcc = [];
-    var flowRow = 0;
-    var flowRowLeft = 0;
-    var flowPatternIndex = 0;
-
-    // Fixed Flow pattern (8 columns), measured from the reference design.
-    // Photos fill these slots in DOM order; after the last slot the whole
-    // block repeats FLOW_PATTERN_ROWS rows further down. row/col are grid
-    // cells, span 2 = large (2 cols x 2 rows), drop = offset within the
-    // row as a fraction of the row step.
-    var FLOW_PATTERN_ROWS = 9;
-    var FLOW_PATTERN = [
-      { row: 0, col: 2, span: 1, drop: 0 },
-      { row: 0, col: 5, span: 1, drop: 0 },
-      // shift: horizontal nudge in columns (+ right, - left). Every photo
-      // in the first or last column is pulled half a column in, so none
-      // touches the screen edge.
-      { row: 1, col: 0, span: 2, drop: 0, shift: 0.05 },
-      { row: 1, col: 3, span: 1, drop: 0 },
-      { row: 1, col: 4, span: 2, drop: 0 },
-      { row: 1, col: 7, span: 1, drop: 0, shift: -0.05 },
-      { row: 2, col: 6, span: 1, drop: 0 },
-      { row: 3, col: 1, span: 1, drop: 0.05 },
-      { row: 3, col: 2, span: 2, drop: 0 },
-      { row: 3, col: 6, span: 2, drop: 0, shift: -0.05 },
-      { row: 4, col: 0, span: 1, drop: 0, shift: 0.05 },
-      { row: 4, col: 4, span: 1, drop: 0 },
-      { row: 5, col: 1, span: 1, drop: 0 },
-      { row: 5, col: 3, span: 2, drop: 0 },
-      { row: 5, col: 7, span: 1, drop: 0, shift: -0.05 },
-      { row: 6, col: 0, span: 1, drop: 0, shift: 0.05 },
-      { row: 6, col: 5, span: 1, drop: 0.12 },
-      { row: 7, col: 1, span: 2, drop: 0 },
-      { row: 7, col: 5, span: 2, drop: 0 },
-    ];
-
-    function flowPlacePattern(a) {
-      var i = flowPatternIndex++;
-      var slot = FLOW_PATTERN[i % FLOW_PATTERN.length];
-      var cycle = Math.floor(i / FLOW_PATTERN.length);
-      var row = cycle * FLOW_PATTERN_ROWS + slot.row;
-
-      flowOccupy(row, slot.col, slot.span);
-
-      a._flow = { row: row, col: slot.col, span: slot.span, drop: slot.drop, shift: slot.shift || 0 };
-      a.style.position = "absolute";
-
-      flowSizeTile(a);
-      flowWatchImage(a);
-    }
-
-    function flowRowQuota(row) {
-      var r = flowRng(row * 7919 + 17);
-      var q = FLOW_ROW_QUOTA[Math.floor(r() * FLOW_ROW_QUOTA.length)];
-
-      return Math.max(1, Math.round((q * flowCols) / 8));
-    }
-
-    function flowStartRow(row) {
-      flowRow = row;
-      flowRowLeft = flowRowQuota(row);
-    }
-
-    function flowFree(row, col) {
-      return col >= 0 && col < flowCols && !(flowOcc[row] && flowOcc[row][col]);
-    }
-
-    function flowFits(row, col, span) {
-      for (var r = row; r < row + span; r++) {
-        for (var c = col; c < col + span; c++) {
-          if (!flowFree(r, c)) {
-            return false;
-          }
-        }
-      }
-
-      return true;
-    }
-
-    // Free columns in `row` a tile of `span` fits at, each weighted —
-    // a column that leaves an empty cell on both sides counts
-    // FLOW_LOOSE_WEIGHT times, so tiles mostly keep white space between
-    // them but can still sit side by side now and then.
-    function flowCandidates(row, span) {
-      var out = [];
-
-      for (var c = 0; c <= flowCols - span; c++) {
-        if (!flowFits(row, c, span)) {
-          continue;
-        }
-
-        var loose = flowFree(row, c - 1) && flowFree(row, c + span);
-        var weight = loose ? FLOW_LOOSE_WEIGHT : 1;
-
-        for (var k = 0; k < weight; k++) {
-          out.push(c);
-        }
-      }
-
-      return out;
-    }
-
-    function flowOccupy(row, col, span) {
-      for (var r = row; r < row + span; r++) {
-        while (flowOcc.length <= r) {
-          flowOcc.push(new Array(flowCols).fill(false));
-        }
-
-        for (var c = col; c < col + span; c++) {
-          flowOcc[r][c] = true;
-        }
-      }
-    }
-
-    // Sets a placed tile's size. A large tile always fills its whole
-    // 2x2 box — a tall portrait frame, like the reference design — with
-    // object-cover cropping whatever doesn't fit. A small tile follows
-    // its photo's own aspect ratio (3:4 portrait until the image has
-    // loaded), capped to its one row. Either way, plus its small seeded
-    // drop within the row.
-    function flowSizeTile(a) {
-      var t = a._flow;
-
-      if (!t) {
-        return;
-      }
-
-      if (!a._flowAspect) {
-        // Natural size from the server (data-aspect), so the tile gets its
-        // final height before the image has even started loading.
-        a._flowAspect = parseFloat(a.getAttribute("data-aspect")) || 0;
-      }
-
-      var width = t.span * flowColWidth + (t.span - 1) * flowGap;
-      var reserved = t.span * flowRowStep - flowGap;
-      var aspect = a._flowAspect || 3 / 4;
-      var height = t.span > 1 ? reserved : Math.min(width / aspect, reserved);
-      var drop = Math.min(t.drop * flowRowStep, Math.max(0, reserved - height));
-
-      a.style.width = width + "px";
-      a.style.height = height + "px";
-
-      // Tell the browser the exact rendered width (object-cover may need
-      // wider than the tile for a landscape photo in a tall box), so srcset
-      // picks the smallest resized copy that is still sharp.
-      var img = a._flowImg || (a._flowImg = a.querySelector("img"));
-
-      if (img && img.hasAttribute("srcset")) {
-        var needed = Math.ceil(Math.max(width, height * aspect));
-
-        if (img._flowSizes !== needed) {
-          img._flowSizes = needed;
-          img.sizes = needed + "px";
-        }
-      }
-      a.style.left = flowPadLeft + (t.col + (t.shift || 0)) * (flowColWidth + flowGap) + "px";
-      a.style.top = flowPadTop + t.row * flowRowStep + drop + "px";
-    }
-
-    function flowWatchImage(a) {
-      if (a._flowWatched) {
-        return;
-      }
-
-      a._flowWatched = true;
-
-      var img = a.querySelector("img");
-
-      if (!img) {
-        return;
-      }
-
-      function measure() {
-        if (img.naturalWidth && img.naturalHeight) {
-          a._flowAspect = img.naturalWidth / img.naturalHeight;
-          flowSizeTile(a);
-        }
-      }
-
-      if (img.complete) {
-        measure();
-      } else {
-        img.addEventListener("load", measure, { once: true });
-      }
-    }
-
-    function flowPlace(a) {
-      if (flowCols === 8) {
-        flowPlacePattern(a);
-        return;
-      }
-
-      var r = flowRng(flowSeed(a.getAttribute("data-slug") || ""));
-      var span = r() < FLOW_LARGE_CHANCE ? 2 : 1;
-      // A few tiles sit slightly below their row line, like the reference.
-      var drop = r() < 0.3 ? 0.05 + r() * 0.09 : 0;
-      var col;
-
-      for (; ;) {
-        if (flowRowLeft > 0) {
-          var options = flowCandidates(flowRow, span);
-
-          if (options.length) {
-            col = options[Math.floor(r() * options.length)];
-            break;
-          }
-        }
-
-        flowStartRow(flowRow + 1);
-      }
-
-      flowOccupy(flowRow, col, span);
-      flowRowLeft--;
-
-      a._flow = { row: flowRow, col: col, span: span, drop: drop };
-      a.style.position = "absolute";
-
-      flowSizeTile(a);
-      flowWatchImage(a);
-    }
-
-    // Lays out every visible photo from scratch. Cheap enough to re-run
-    // on every resize, filter change and infinite-scroll page, and fully
-    // deterministic, so photos already on screen never jump.
-    function layoutFlow() {
-      if (canvas.offsetParent === null) {
-        return;
-      }
-
-      flowLastWidth = canvas.clientWidth;
-
-      var style = getComputedStyle(canvas);
-      var padRight = parseFloat(style.paddingRight) || 0;
-      var padBottom = parseFloat(style.paddingBottom) || 0;
-
-      flowPadLeft = parseFloat(style.paddingLeft) || 0;
-      flowPadTop = parseFloat(style.paddingTop) || 0;
-      flowCols = flowColumnCount();
-
-      var inner = canvas.clientWidth - flowPadLeft - padRight;
-
-      flowColWidth = inner / (flowCols + (flowCols - 1) * FLOW_GAP_RATIO);
-      flowGap = flowColWidth * FLOW_GAP_RATIO;
-      flowRowStep = (flowColWidth + flowGap) * FLOW_ROW_RATIO;
-      flowOcc = [];
-      flowPatternIndex = 0;
-      flowStartRow(0);
-
-      Array.prototype.slice
-        .call(canvas.querySelectorAll(".photo-item"))
-        .forEach(function (a) {
-          if (a.style.display === "none") {
-            a._flow = null;
-            return;
-          }
-
-          flowPlace(a);
-        });
-
-      canvas.style.height =
-        Math.max(0, flowPadTop + flowOcc.length * flowRowStep - flowGap + padBottom) +
-        "px";
-    }
-
-    var flowResizeTimer = null;
-    var flowLastWidth = 0;
-
-    canvas.className = "relative px-2 pt-6 pb-18 overflow-visible";
-    layoutFlow();
-    flowRelayout = layoutFlow;
-
-    // head.ejs keeps #flowCanvas invisible until .is-ready. Wait for the
-    // eagerly-loaded (first-screen) photos too, since a small tile only
-    // gets its real height once its image loads — capped so one slow
-    // image can't hold the whole page blank.
-    (function revealFlow() {
-      var pending = Array.prototype.slice
-        .call(canvas.querySelectorAll('img[loading="eager"]'))
-        .filter(function (img) {
-          return !img.complete;
-        });
-      var done = false;
-
-      function reveal() {
-        if (done) {
-          return;
-        }
-
-        done = true;
-        canvas.classList.add("is-ready");
-      }
-
-      if (!pending.length) {
-        reveal();
-        return;
-      }
-
-      var left = pending.length;
-
-      pending.forEach(function (img) {
-        function settle() {
-          if (--left === 0) {
-            reveal();
-          }
-        }
-
-        img.addEventListener("load", settle, { once: true });
-        img.addEventListener("error", settle, { once: true });
+        var c = 0;
+        for (k = 1; k < C; k++) if (cols[k].h < cols[c].h - 1) c = k;
+
+        cols[c].items.push({ p: p, dx: Math.round((W - w) / 2), y: Math.round(cols[c].h), w: Math.round(w), h: Math.round(h) });
+        cols[c].h += h + M.CAP + M.GY;
       });
 
-      setTimeout(reveal, 1200);
-    })();
+      var BW = C * (W + M.GX) - M.GX;
+      var BH = Math.max.apply(null, cols.map(function (c) { return c.h; }));
+      var shortest = Math.min.apply(null, cols.map(function (c) { return c.h; }));
+      var endless = BW > window.innerWidth * 1.6 && shortest > window.innerHeight * 1.4;
 
-    window.addEventListener("resize", function () {
-      if (canvas.offsetParent === null) {
-        return;
-      }
+      cols.forEach(function (c, ci) {
+        c.x = ci * (W + M.GX);
+        c.period = Math.round(c.h);
+        c.stag = endless ? Math.round(((ci * 0.618) % 1) * W * 0.9) : 0;
+      });
 
-      clearTimeout(flowResizeTimer);
-      flowResizeTimer = setTimeout(function () {
-        if (canvas.clientWidth !== flowLastWidth) {
-          flowLastWidth = canvas.clientWidth;
-          layoutFlow();
-        }
-      }, 150);
-    });
+      return { M: M, W: W, GX: M.GX, cols: cols, BW: BW + M.GX, BH: BH, endless: endless };
+    }
 
-    var pageSize = parseInt(canvas.getAttribute("data-page-size"), 10) || 30;
+    // Stable pseudo-random vertical shift for repeat b of column c.
+    function hashShift(b, c, period) {
+      var v = Math.sin((b + 1) * 12.9898 + (c + 1) * 78.233) * 43758.5453;
+      return Math.round((v - Math.floor(v)) * period);
+    }
 
-    var offset = parseInt(canvas.getAttribute("data-offset"), 10) || 0;
-
-    var hasMore = canvas.getAttribute("data-has-more") === "1";
-
-    var nextIndex = offset;
-    var loading = false;
-    function buildPhotoItem(p) {
+    function makeTile(it) {
+      var p = it.p;
       var a = document.createElement("a");
 
+      a.className = "photo-item flow-tile";
       a.href = "/photo/" + encodeURIComponent(p.slug);
+      a.draggable = false;
+      a.setAttribute("aria-label", p.t || p.alt || "Photo");
+      a.style.width = it.w + "px";
+      a.style.setProperty("--phh", it.h + "px");
+      // Filter values, read by the shared filter code.
+      ["category", "collection", "camera", "lens", "country", "state", "year"].forEach(function (k) {
+        a.setAttribute("data-" + k, p[k] || "");
+      });
 
-      a.className =
-        "photo-item group block overflow-visible shadow-sm hover:z-10 focus-visible:z-10";
+      var ph = document.createElement("span");
+      ph.className = "flow-ph";
+      ph.style.height = it.h + "px";
+      // The photo's dominant colour shows until it loads.
+      if (p.c) ph.style.background = "color-mix(in srgb, " + p.c + " 35%, var(--flow-ph))";
 
-      a.setAttribute("data-index", nextIndex++);
-      a.setAttribute("data-slug", p.slug || "");
-      a.setAttribute("data-category", p.category || "");
-      a.setAttribute("data-collection", p.collection || "");
-      a.setAttribute("data-camera", p.camera || "");
-      a.setAttribute("data-lens", p.lens || "");
-      a.setAttribute("data-country", p.country || "");
-      a.setAttribute("data-state", p.state || "");
-      a.setAttribute("data-year", p.year || "");
-
-      if (photoAspect(p)) {
-        a.setAttribute("data-aspect", photoAspect(p).toFixed(4));
+      var img = document.createElement("img");
+      img.className = "photo-img";
+      img.alt = p.alt || "";
+      img.draggable = false;
+      img.decoding = "async";
+      img.addEventListener("load", function () { img.classList.add("is-loaded"); });
+      if (p.srcset) {
+        img.srcset = p.srcset;
+        img.sizes = it.w + "px";
       }
+      img.src = p.src;
+      ph.appendChild(img);
+      a.appendChild(ph);
 
-      a.innerHTML =
-        '<div class="relative h-full"' +
-        (p.color ? ' style="background-color: ' + escAttr(p.color) + '"' : "") +
-        ">" +
-        "<img" +
-        // flowSizeTile replaces sizes with the tile's exact width once placed
-        photoImgAttrs(p, "(max-width: 560px) 50vw, 26vw") +
-        ' class="photo-img block w-full h-full object-cover select-none">' +
-        // Hover frame
-        '<span aria-hidden="true" class="pointer-events-none absolute top-0 left-0 w-[44px] h-[48px] -translate-x-[9px] -translate-y-[9px] border-t-2 border-l-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>' +
-        '<span aria-hidden="true" class="pointer-events-none absolute top-0 right-0 w-[44px] h-[48px] translate-x-[9px] -translate-y-[9px] border-t-2 border-r-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>' +
-        '<span aria-hidden="true" class="pointer-events-none absolute bottom-0 left-0 w-[44px] h-[48px] -translate-x-[9px] translate-y-[9px] border-b-2 border-l-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>' +
-        '<span aria-hidden="true" class="pointer-events-none absolute bottom-0 right-0 w-[44px] h-[48px] translate-x-[9px] translate-y-[9px] border-b-2 border-r-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>' +
-        "</div>" +
-        // Caption
-        '<span class="pointer-events-none block h-0 mt-2.5 text-center whitespace-nowrap font-tight text-[14px] font-medium leading-none tracking-[-0.01em] text-ink dark:text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300">' +
-        esc(p.cap) +
-        "</span>";
+      ["a", "b", "c", "d"].forEach(function (k) {
+        var cn = document.createElement("i");
+        cn.className = "flow-cn " + k;
+        cn.setAttribute("aria-hidden", "true");
+        a.appendChild(cn);
+      });
 
+      var cap = document.createElement("span");
+      cap.className = "flow-cap";
+      cap.textContent = p.t || "";
+      a.appendChild(cap);
       return a;
     }
 
-    function appendPhotos(newPhotos) {
-      newPhotos.forEach(function (p) {
-        var a = buildPhotoItem(p);
+    function render() {
+      if (!L) return;
 
-        canvas.appendChild(a);
+      var vw = window.innerWidth, vh = window.innerHeight, m = 300;
+      var seen = new Set();
+      var b0 = L.endless ? Math.floor((cx - m) / L.BW) : 0;
+      var b1 = L.endless ? Math.floor((cx + vw + m) / L.BW) : 0;
+
+      for (var b = b0; b <= b1; b++) {
+        L.cols.forEach(function (c, ci) {
+          var x = b * L.BW + c.x - cx;
+          if (x + L.W < -m || x > vw + m) return;
+
+          var base0 = L.endless ? c.stag + hashShift(b, ci, c.period) - cy : -cy;
+          var k0 = 0, k1 = 0;
+
+          if (L.endless) {
+            k0 = Math.floor((-m - base0) / c.period) - 1;
+            k1 = Math.floor((vh + m - base0) / c.period);
+          }
+
+          for (var k = k0; k <= k1; k++) {
+            var base = base0 + k * c.period;
+
+            c.items.forEach(function (it, ii) {
+              var y = base + it.y;
+              if (y + it.h + 40 < -m || y > vh + m) return;
+
+              var key = b + "|" + ci + "|" + k + "|" + ii;
+              seen.add(key);
+              var el = live.get(key);
+
+              if (!el) {
+                el = makeTile(it);
+                el.classList.add("is-new");
+                el.addEventListener("animationend", function () { el.classList.remove("is-new"); }, { once: true });
+                // First paint: tiles ripple in from the centre.
+                if (first) {
+                  var d = Math.hypot(x + L.W / 2 - vw / 2, y - vh / 2);
+                  el.style.animationDelay = (Math.min(d, 1200) / 1200 * 0.6).toFixed(2) + "s";
+                }
+                field.appendChild(el);
+                live.set(key, el);
+              }
+
+              el.style.transform = "translate3d(" + (x + it.dx).toFixed(1) + "px," + y.toFixed(1) + "px,0)";
+            });
+          }
+        });
+      }
+
+      live.forEach(function (el, key) {
+        if (!seen.has(key)) {
+          if (el === onEl) setOn(null);
+          el.remove();
+          live.delete(key);
+        }
       });
-
-      /*
-       * Apply currently active filters after adding new photos — this
-       * also re-runs the Flow layout (flowRelayout), which places them.
-       */
-      applyFilters();
+      first = false;
     }
 
-    function loadNextPage() {
-      if (loading || !hasMore) {
+    // A small set (not endless) stays on screen: it can't be dragged away.
+    function clampCam() {
+      if (!L || L.endless) return;
+
+      var vw = window.innerWidth, vh = window.innerHeight;
+      var pad = L.M.m ? 16 : 48;
+      var top = 96, bottom = 120; // room for the header and the filter pill
+
+      function span(size, view, a, b) {
+        return size + a + b <= view ? [(size - view) / 2, (size - view) / 2] : [-a, size - view + b];
+      }
+
+      var sx = span(L.BW - L.GX, vw, pad, pad);
+      var sy = span(L.BH, vh, top, bottom);
+      cx = Math.min(Math.max(cx, sx[0]), sx[1]);
+      cy = Math.min(Math.max(cy, sy[0]), sy[1]);
+    }
+
+    function filteredPhotos() {
+      return ALL.filter(function (p) {
+        return photoMatchesFilters(function (name) { return p[name]; });
+      });
+    }
+
+    // The camera is remembered per filter, so coming back from a photo page
+    // returns to the same spot.
+    function cameraKey() {
+      return buildFilterQueryString() + "|" + window.innerWidth;
+    }
+
+    function saveCamera() {
+      try {
+        sessionStorage.setItem(FLOW_CAMERA_KEY, JSON.stringify({ key: cameraKey(), cx: cx, cy: cy }));
+      } catch (e) {}
+    }
+
+    function savedCamera() {
+      try {
+        var v = JSON.parse(sessionStorage.getItem(FLOW_CAMERA_KEY) || "null");
+        return v && v.key === cameraKey() ? v : null;
+      } catch (e) {
         return null;
       }
-
-      loading = true;
-
-      return fetch("/api/photos/flow?offset=" + offset + "&limit=" + pageSize)
-        .then(function (r) {
-          return r.json();
-        })
-        .then(function (data) {
-          if (data && data.success && data.photos && data.photos.length) {
-            appendPhotos(data.photos);
-
-            offset = data.nextOffset;
-          }
-
-          hasMore = !!(data && data.hasMore);
-
-          if (!hasMore) {
-            observer.unobserve(sentinel);
-          }
-
-          loading = false;
-        })
-        .catch(function () {
-          loading = false;
-        });
     }
 
-    function loadAllRemaining() {
-      if (!hasMore) {
-        return Promise.resolve();
+    function rebuild(keepCam) {
+      var list = filteredPhotos();
+
+      if (emptyMsg) emptyMsg.hidden = list.length > 0;
+      live.forEach(function (el) { el.remove(); });
+      live.clear();
+      setOn(null);
+      L = list.length ? layout(list) : null;
+
+      if (L && !keepCam) {
+        var saved = savedCamera();
+
+        if (saved) {
+          cx = saved.cx;
+          cy = saved.cy;
+        } else if (L.endless) {
+          cx = Math.round((L.BW - window.innerWidth) / 2);
+          cy = Math.round(L.W * 0.2) - 74;
+        } else {
+          cx = -1e6;
+          cy = -1e6;
+        }
+        clampCam();
       }
 
-      var p = loadNextPage();
-
-      return p ? p.then(loadAllRemaining) : Promise.resolve();
+      first = true;
+      dirty = true;
     }
 
-    flowLoadAll = loadAllRemaining;
-    restoreFlowScroll = restoreFlowScrollPosition;
+    /* ── interaction ── */
 
-    // A large rootMargin here would fire loadNextPage() almost immediately
-    // on page load (the sentinel is "nearly visible" before the visitor
-    // has scrolled at all), fetching a second batch the visitor may never
-    // scroll to. Keeping this small means the next page only loads once
-    // the visitor has actually scrolled close to the bottom.
-    var observer = new IntersectionObserver(
-      function (entries) {
-        if (entries[0].isIntersecting) {
-          loadNextPage();
-        }
-      },
-      {
-        rootMargin: "150px 0px",
-      },
-    );
-
-    if (hasMore) {
-      observer.observe(sentinel);
+    function touch() {
+      lastInput = performance.now();
     }
 
-    window.addEventListener("load", restoreFlowScrollPosition);
+    function hideHint() {
+      if (hint) hint.classList.add("is-gone");
+    }
 
-    requestAnimationFrame(function () {
-      setTimeout(restoreFlowScrollPosition, 60);
+    function setOn(el) {
+      if (onEl === el) return;
+      if (onEl) onEl.classList.remove("is-on");
+      onEl = el;
+      if (el) el.classList.add("is-on");
+      field.classList.toggle("is-hovering", !!el);
+    }
+
+    field.addEventListener("pointerdown", function (e) {
+      if (e.button !== 0) return;
+      drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), moved: false, id: e.pointerId, vx: 0, vy: 0 };
+      dragged = false;
+      vx = vy = 0;
+      touch();
     });
+
+    window.addEventListener("pointermove", function (e) {
+      if (!drag || e.pointerId !== drag.id) return;
+
+      var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      var now = performance.now(), dt = Math.max(8, now - drag.t);
+
+      if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 6) {
+        drag.moved = true;
+        field.classList.add("is-grabbing");
+        field.setPointerCapture(e.pointerId);
+        hideHint();
+        setOn(null);
+      }
+
+      if (drag.moved) {
+        cx -= dx;
+        cy -= dy;
+        drag.vx = -dx / dt * 16;
+        drag.vy = -dy / dt * 16;
+        dirty = true;
+      }
+
+      drag.x = e.clientX;
+      drag.y = e.clientY;
+      drag.t = now;
+      touch();
+    });
+
+    function endDrag(e) {
+      if (!drag || e.pointerId !== drag.id) return;
+
+      var d = drag;
+      drag = null;
+      field.classList.remove("is-grabbing");
+
+      if (d.moved) {
+        // A flick keeps gliding.
+        if (!reduceMotion && performance.now() - d.t < 80) {
+          vx = d.vx;
+          vy = d.vy;
+        }
+        dragged = true;
+        // Hover again whatever photo is now under the pointer.
+        if (canHover) {
+          var under = document.elementFromPoint(e.clientX, e.clientY);
+          setOn(under && under.closest ? under.closest(".flow-tile") : null);
+        }
+      }
+    }
+
+    window.addEventListener("pointerup", endDrag);
+    window.addEventListener("pointercancel", endDrag);
+
+    // The click that ends a drag doesn't open a photo. Opening one remembers
+    // where the canvas was.
+    field.addEventListener("click", function (e) {
+      if (dragged) {
+        e.preventDefault();
+        e.stopPropagation();
+        dragged = false;
+        return;
+      }
+      if (e.target.closest(".flow-tile")) saveCamera();
+    }, true);
+    window.addEventListener("pagehide", saveCamera);
+
+    field.addEventListener("wheel", function (e) {
+      e.preventDefault();
+      var k = e.deltaMode === 1 ? 32 : 1;
+
+      if (e.shiftKey && !e.deltaX) {
+        cx += e.deltaY * k;
+      } else {
+        cx += e.deltaX * k;
+        cy += e.deltaY * k;
+      }
+
+      vx = vy = 0;
+      dirty = true;
+      touch();
+      hideHint();
+    }, { passive: false });
+
+    field.addEventListener("keydown", function (e) {
+      var d = e.shiftKey ? 500 : 160;
+      var mv = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, -d], ArrowDown: [0, d] }[e.key];
+
+      if (mv) {
+        e.preventDefault();
+        vx = mv[0] / 12;
+        vy = mv[1] / 12;
+        touch();
+        hideHint();
+      }
+    });
+
+    // Hover dims the other photos (pointer devices only).
+    field.addEventListener("pointerover", function (e) {
+      if (!canHover || (drag && drag.moved)) return;
+      setOn(e.target.closest(".flow-tile"));
+    });
+    field.addEventListener("pointerleave", function () { setOn(null); });
+
+    function tick() {
+      if (isShown()) {
+        if (!drag && (Math.abs(vx) > 0.05 || Math.abs(vy) > 0.05)) {
+          cx += vx;
+          cy += vy;
+          vx *= 0.94;
+          vy *= 0.94;
+          dirty = true;
+        } else if (!drag && !reduceMotion && L && L.endless && !onEl && performance.now() - lastInput > DRIFT_DELAY) {
+          // Idle drift: eases in a moment after the last input.
+          drift = Math.min(1, drift + 1 / 36);
+          cy += 0.18 * drift;
+          cx += 0.05 * drift;
+          dirty = true;
+        }
+
+        if (drag || performance.now() - lastInput <= DRIFT_DELAY || onEl) drift = 0;
+
+        if (dirty) {
+          clampCam();
+          render();
+          dirty = false;
+        }
+      }
+      requestAnimationFrame(tick);
+    }
+
+    var resizeTimer = null;
+    window.addEventListener("resize", function () {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function () { rebuild(true); clampCam(); }, 150);
+    });
+
+    // Filters and the Flow/Grid switch call these (see applyFilters, switchView).
+    flowRelayout = function () { rebuild(false); };
+    restoreFlowScroll = function () { dirty = true; };
+
+    rebuild(false);
+    requestAnimationFrame(tick);
   })();
 
   /* ── Photo detail — Back to previous page ─────────────────────────── */

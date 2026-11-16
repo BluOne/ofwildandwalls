@@ -24,6 +24,9 @@ export interface AdminPhoto {
   live: boolean;
   about: string;
   altNote: string;
+  tags?: string;
+  species?: string;
+  scientificName?: string;
   l: string;
   t: string;
   w: string;

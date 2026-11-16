@@ -10,99 +10,23 @@
 
 <main>
 
-<section
-  id="flowView"
-  class="pt-[74px] pb-24"
->
-
-<div id="flowCanvas" class="px-4 md:px-9 pt-6 pb-18 overflow-visible" data-offset="<%= typeof nextOffset !== 'undefined' ? nextOffset : photos.length %>" data-page-size="<%= typeof pageSize !== 'undefined' ? pageSize : photos.length %>" data-has-more="<%= typeof hasMore !== 'undefined' && hasMore ? '1' : '0' %>" >
-
-    <%# Rendered flat here for the first paint / no-JS fallback — app.js
-        picks these up and scatters them across its sparse column grid
-        (see layoutFlow in #flowCanvas's IIFE in app.js). %>
-
-    <% photos.forEach(function (p, i) { %>
-<a
-  href="/photo/<%= p.slug %>"
-
-  class="photo-item group block overflow-visible shadow-sm hover:z-10 focus-visible:z-10"
-
-
-  data-index="<%= i %>"
-  data-slug="<%= p.slug %>"
-  data-category="<%= p.category %>"
-  data-collection="<%= p.collection %>"
-  data-camera="<%= p.camera %>"
-  data-lens="<%= p.lens %>"
-  data-country="<%= p.country %>"
-  data-state="<%= p.state %>"
-  data-year="<%= p.year %>"
-  <% if (p.width && p.height) { %>data-aspect="<%= (p.width / p.height).toFixed(4) %>"<% } %>
->
-
-  <!-- Photo + Hover Effects -->
-  <div class="relative h-full"<% if (p.color) { %> style="background-color: <%= p.color %>"<% } %>>
-
-    <!-- app.js sizes the tile (see flowSizeTile): large tiles are a fixed
-         portrait box, small ones follow the photo's own aspect ratio, so
-         object-cover only crops large tiles and very tall small ones.
-         srcset serves a resized WebP copy sized to the tile; the tile's
-         background shows the photo's dominant colour until it loads. -->
-    <img
-      src="<%= p.srcSmall || p.src %>"
-      <% if (p.srcset) { %>srcset="<%= p.srcset %>" sizes="(max-width: 560px) 50vw, 26vw"<% } %>
-      <% if (p.width && p.height) { %>width="<%= p.width %>" height="<%= p.height %>"<% } %>
-      alt="<%= p.alt %>"
-      loading="<%= i < 4 ? 'eager' : 'lazy' %>"
-      <% if (i < 2) { %>fetchpriority="high"<% } %>
-      decoding="async"
-      class="photo-img block w-full h-full object-cover select-none"
-    >
-
-    <!-- Hover frame -->
-
-    <span
-      aria-hidden="true"
-      class="pointer-events-none absolute top-0 left-0 w-[44px] h-[48px] -translate-x-[9px] -translate-y-[9px] border-t-2 border-l-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-    ></span>
-
-    <span
-      aria-hidden="true"
-      class="pointer-events-none absolute top-0 right-0 w-[44px] h-[48px] translate-x-[9px] -translate-y-[9px] border-t-2 border-r-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-    ></span>
-
-    <span
-      aria-hidden="true"
-      class="pointer-events-none absolute bottom-0 left-0 w-[44px] h-[48px] -translate-x-[9px] translate-y-[9px] border-b-2 border-l-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-    ></span>
-
-    <span
-      aria-hidden="true"
-      class="pointer-events-none absolute bottom-0 right-0 w-[44px] h-[48px] translate-x-[9px] translate-y-[9px] border-b-2 border-r-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-    ></span>
-
-  </div>
-
-  <!-- Caption -->
-
-<span
-  class="pointer-events-none block h-0 mt-2.5 text-center whitespace-nowrap font-tight text-[14px] font-medium leading-none tracking-[-0.01em] text-ink dark:text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300"
->
-  <%= p.cap && p.cap.length > 22 ? p.cap.substring(0, 22) + '...' : p.cap %>
-</span>
-
-</a>
-
-    <% }); %>
-
-</div>
-
-  <div
-    id="flowSentinel"
-    class="h-px w-full"
-    aria-hidden="true"
-  ></div>
-
+<%# Flow: one endless canvas you drag (or scroll) in any direction. Every photo
+    sits in one column width at its own aspect ratio (capped at 4:5 tall), placed
+    in the shortest column, and the block repeats endlessly with each column
+    offset so repeats never line up. app.js builds it from #flowData and mounts
+    only the tiles on screen (see the Flow IIFE in app.js). %>
+<section id="flowView">
+  <div id="flowField" tabindex="0" aria-label="Photo wall. Drag, scroll or use the arrow keys to explore."></div>
+  <p id="flowHint" class="flow-hint">Drag to explore</p>
+  <p id="flowEmpty" class="flow-empty" hidden>No photos match these filters.</p>
+  <script id="flowData" type="application/json"><%- JSON.stringify(typeof flowPhotos !== 'undefined' ? flowPhotos : []).replace(/</g, '\\u003c') %></script>
+  <noscript>
+    <ul class="flow-noscript">
+      <% (typeof flowPhotos !== 'undefined' ? flowPhotos : []).forEach(function (p) { %>
+        <li><a href="/photo/<%= p.slug %>"><img src="<%= p.src %>" alt="<%= p.alt %>" loading="lazy"><span><%= p.t %></span></a></li>
+      <% }); %>
+    </ul>
+  </noscript>
 </section>
 
 <section

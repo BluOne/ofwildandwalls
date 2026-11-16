@@ -8,6 +8,7 @@ interface DBCollectionRow extends RowDataPacket {
   name: string;
   description: string;
   cover_photo_id: number | null;
+  live: number;
 }
 
 const getCollections = async (req: Request, res: Response) => {
@@ -17,7 +18,7 @@ const getCollections = async (req: Request, res: Response) => {
     const search = String(req.query.search || req.query.q || "").trim();
 
     let [allRows] = await pool.query<DBCollectionRow[]>(
-      "SELECT id, name AS title, name, description, cover_photo_id FROM collections ORDER BY id DESC"
+      "SELECT id, name AS title, name, description, cover_photo_id, live FROM collections ORDER BY id DESC"
     );
 
     const [catRows] = await pool.query<RowDataPacket[]>(
@@ -71,14 +72,15 @@ const createCollection = async (req: Request, res: Response) => {
   try {
     const title = (req.body.title || req.body.name || "").trim();
     const description = (req.body.description || "").trim();
+    const live = req.body.live === "0" ? 0 : 1;
 
     if (!title) {
       return res.redirect("/admin/collections?error=Collection+title+is+required.");
     }
 
     await pool.query(
-      "INSERT INTO collections (name, description) VALUES (?, ?)",
-      [title, description]
+      "INSERT INTO collections (name, description, live) VALUES (?, ?, ?)",
+      [title, description, live]
     );
 
     res.redirect("/admin/collections?page=1&flash=Collection+created");
@@ -108,10 +110,11 @@ const updateCollection = async (req: Request, res: Response) => {
 
     const title = (req.body.title || req.body.name || "").trim() || targetCollection.name;
     const description = (req.body.description || "").trim();
+    const live = req.body.live === "0" ? 0 : 1;
 
     await pool.query(
-      "UPDATE collections SET name = ?, description = ? WHERE id = ?",
-      [title, description, targetCollection.id]
+      "UPDATE collections SET name = ?, description = ?, live = ? WHERE id = ?",
+      [title, description, live, targetCollection.id]
     );
 
     res.redirect("/admin/collections?page=" + page + searchParam + "&flash=Collection+saved");
@@ -147,6 +150,19 @@ const deleteCollection = async (req: Request, res: Response) => {
   }
 };
 
+/** Switches a collection between Published and Unpublished (hidden from the site's menus). */
+const toggleCollection = async (req: Request, res: Response) => {
+  try {
+    const page = req.query.page || "1";
+    const search = req.query.search ? "&search=" + encodeURIComponent(String(req.query.search)) : "";
+    await pool.query("UPDATE collections SET live = NOT live WHERE id = ?", [parseInt(req.params.index, 10)]);
+    res.redirect("/admin/collections?page=" + page + search);
+  } catch (error) {
+    console.error("Error toggling collection:", error);
+    res.status(500).send("Error toggling collection");
+  }
+};
+
 // ---- JSON API Endpoint -----------------------------------------------------
 
 const getCollectionsAPI = async (req: Request, res: Response) => {
@@ -177,5 +193,6 @@ export default {
   createCollection,
   updateCollection,
   deleteCollection,
+  toggleCollection,
   getCollectionsAPI
 };

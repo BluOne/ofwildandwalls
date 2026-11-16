@@ -7,6 +7,7 @@ interface DBCategoryRow extends RowDataPacket {
   title: string;
   parent: string;
   description: string;
+  live: number;
 }
 
 const getCategories = async (req: Request, res: Response) => {
@@ -16,7 +17,7 @@ const getCategories = async (req: Request, res: Response) => {
     const search = String(req.query.search || req.query.q || "").trim();
 
     let [allRows] = await pool.query<DBCategoryRow[]>(
-      "SELECT id, name AS title, parent, description FROM categories ORDER BY id DESC"
+      "SELECT id, name AS title, parent, description, live FROM categories ORDER BY id DESC"
     );
 
     const [photoRows] = await pool.query<RowDataPacket[]>(
@@ -67,14 +68,15 @@ const createCategory = async (req: Request, res: Response) => {
     const title = (req.body.title || "").trim();
     const parent = req.body.parent || "None";
     const description = (req.body.description || "").trim();
+    const live = req.body.live === "0" ? 0 : 1;
 
     if (!title) {
       return res.redirect("/admin/categories?error=Category+title+is+required.");
     }
 
     await pool.query(
-      "INSERT INTO categories (name, parent, description) VALUES (?, ?, ?)",
-      [title, parent, description]
+      "INSERT INTO categories (name, parent, description, live) VALUES (?, ?, ?, ?)",
+      [title, parent, description, live]
     );
 
     res.redirect("/admin/categories?page=1&flash=Category+created");
@@ -105,10 +107,11 @@ const updateCategory = async (req: Request, res: Response) => {
     const title = (req.body.title || "").trim() || targetCategory.title;
     const parent = req.body.parent || "None";
     const description = (req.body.description || "").trim();
+    const live = req.body.live === "0" ? 0 : 1;
 
     await pool.query(
-      "UPDATE categories SET name = ?, parent = ?, description = ? WHERE id = ?",
-      [title, parent, description, targetCategory.id]
+      "UPDATE categories SET name = ?, parent = ?, description = ?, live = ? WHERE id = ?",
+      [title, parent, description, live, targetCategory.id]
     );
 
     res.redirect("/admin/categories?page=" + page + searchParam + "&flash=Category+saved");
@@ -152,6 +155,19 @@ const deleteCategory = async (req: Request, res: Response) => {
   }
 };
 
+/** Switches a category between Published and Unpublished (hidden from the site's menus). */
+const toggleCategory = async (req: Request, res: Response) => {
+  try {
+    const page = req.query.page || "1";
+    const search = req.query.search ? "&search=" + encodeURIComponent(String(req.query.search)) : "";
+    await pool.query("UPDATE categories SET live = NOT live WHERE id = ?", [parseInt(req.params.index, 10)]);
+    res.redirect("/admin/categories?page=" + page + search);
+  } catch (error) {
+    console.error("Error toggling category:", error);
+    res.status(500).send("Error toggling category");
+  }
+};
+
 // ---- JSON API Endpoint -----------------------------------------------------
 
 const getCategoriesAPI = async (req: Request, res: Response) => {
@@ -183,5 +199,6 @@ export default {
   createCategory,
   updateCategory,
   deleteCategory,
+  toggleCategory,
   getCategoriesAPI
 };

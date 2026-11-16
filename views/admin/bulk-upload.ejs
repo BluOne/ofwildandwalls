@@ -1,0 +1,1130 @@
+<%- include("partials/head", { pageTitle: "Bulk upload · OF Wild & Walls" }) %>
+  <div class="flex min-h-screen flex-col">
+    <%- include("partials/header", { flash: "", primaryForm: "" }) %>
+
+      <div class="grid flex-1 items-stretch" style="grid-template-columns: 214px 1fr">
+        <%- include("partials/sidebar", { nav: nav, photos: [], categories: categories }) %>
+
+          <main class="min-w-0 px-7 pb-11 pt-6">
+            <div class="mb-4 flex items-end justify-between gap-4">
+              <div>
+                <h1 class="m-0 mb-1 text-[21px] font-semibold tracking-tight">Bulk upload</h1>
+                <p class="m-0 text-[13px] text-mute">
+                  One row per photo. Paste Google Drive links of photos shared as "Anyone with the link"; each link is checked as you enter it.
+                  Uploads run in the background, so you can leave this page while they finish.
+                </p>
+              </div>
+              <div class="flex shrink-0 gap-2">
+                <a href="/admin/photos" class="pill-light">Back to photos</a>
+                <button type="button" data-bulk-start
+                  class="pill-dark disabled:cursor-not-allowed disabled:opacity-50">Upload</button>
+              </div>
+            </div>
+
+            <div id="bulk-error"
+              class="mb-4 hidden rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] font-medium text-red-700" role="alert"></div>
+            <div id="bulk-done"
+              class="mb-4 hidden rounded-xl border border-amber/30 bg-amber/10 px-4 py-3 text-[13px] text-amberink">
+              <span id="bulk-done-text"></span>
+              <a href="/admin/photos" class="ml-1 font-semibold underline hover:no-underline">Go to photos</a>
+            </div>
+
+            <section class="card overflow-hidden">
+              <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#eee7dd] bg-sand px-4 py-3">
+                <div class="flex flex-wrap items-center gap-2">
+                  <button type="button" id="bulk-add-row" class="pill-light !py-1.5 text-xs">+ Add row</button>
+                  <button type="button" id="bulk-paste-toggle" class="pill-light !py-1.5 text-xs">Paste Drive links…</button>
+                  <button type="button" id="bulk-clear-done" class="hidden pill-light !py-1.5 text-xs">Clear uploaded rows</button>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span id="bulk-restored" class="hidden text-xs text-amberink">
+                    <span id="bulk-restored-text"></span>
+                    <button type="button" id="bulk-discard" class="ml-1 font-semibold underline hover:no-underline">Discard</button>
+                  </span>
+                  <span id="bulk-save-state" class="text-xs text-mute"></span>
+                  <span id="bulk-summary" class="text-xs text-mute"></span>
+                </div>
+              </div>
+
+              <div id="bulk-paste" class="hidden border-b border-[#eee7dd] px-4 py-3">
+                <label class="label">Paste a column of Google Drive links, one per line. Each becomes a row.
+                  <textarea id="bulk-paste-text" class="field mt-1.5 resize-y text-[12px]" rows="4" spellcheck="false"
+                    placeholder="https://drive.google.com/file/d/…/view?usp=sharing"></textarea>
+                </label>
+                <div class="mt-2 flex justify-end gap-2">
+                  <button type="button" id="bulk-paste-cancel" class="pill-light !py-1.5 text-xs">Cancel</button>
+                  <button type="button" id="bulk-paste-add" class="pill-dark !py-1.5 text-xs">Add rows</button>
+                </div>
+              </div>
+
+              <div class="overflow-x-auto" id="bulk-scroll">
+                <table id="bulk-table" class="w-full table-fixed border-collapse text-[12px]">
+                  <%# Columns and header are built from COLUMNS in the script below. %>
+                  <colgroup id="bulk-cols"></colgroup>
+                  <thead><tr id="bulk-head" class="bg-white"></tr></thead>
+                  <tbody id="bulk-rows"></tbody>
+                </table>
+              </div>
+              <p class="border-t border-[#eee7dd] px-4 py-2.5 text-[11px] text-mute">
+                Tip: paste several lines into any text column to fill the rows below it. Enter moves down a row.
+                Category, collections, camera, lens and state / country come from the admin; add new ones there first.
+              </p>
+            </section>
+          </main>
+      </div>
+  </div>
+
+  <%# Shared dropdown for Category / Collections / Location cells. %>
+  <div id="bulk-picker" class="fixed z-50 hidden w-72 rounded-xl border border-line2 bg-white shadow-lg">
+    <input type="search" id="bulk-picker-search" autocomplete="off"
+      class="w-full rounded-t-xl border-b border-line2 bg-transparent px-3 py-2 text-[12px] text-ink outline-none">
+    <div id="bulk-picker-list" class="max-h-64 overflow-y-auto p-1"></div>
+    <div class="flex items-center justify-between border-t border-line2 px-3 py-1.5 text-[11px] text-mute">
+      <span id="bulk-picker-note"></span>
+      <button type="button" id="bulk-picker-clear" class="hover:text-ink hover:underline">Clear</button>
+    </div>
+  </div>
+
+  <script id="bulk-data" type="application/json"><%- JSON.stringify({ categories: categories, collections: collections, cameras: cameras, lenses: lenses, countries: countries, draft: typeof draft !== "undefined" ? draft : null, jobs: typeof jobs !== "undefined" ? jobs : [] }).replace(/</g, '\\u003c') %></script>
+  <script>
+    (function () {
+      const DATA = JSON.parse(document.getElementById('bulk-data').textContent);
+      const OPTIONS = {
+        category: DATA.categories.map(function (c) { return { id: String(c.id), label: c.title }; }),
+        collections: DATA.collections.map(function (c) { return { id: String(c.id), label: c.title }; }),
+        camera: DATA.cameras.map(function (c) { return { id: String(c.id), label: c.brand ? c.brand + ' ' + c.model : c.model }; }),
+        lens: DATA.lenses.map(function (l) { return { id: String(l.id), label: l.brand ? l.brand + ' ' + l.model : l.model }; }),
+        location: DATA.countries.map(function (c) {
+          return { id: String(c.id), label: c.state ? c.state + ', ' + c.country : c.country };
+        })
+      };
+      const LABELS = {};
+      Object.keys(OPTIONS).forEach(function (k) {
+        LABELS[k] = {};
+        OPTIONS[k].forEach(function (o) { LABELS[k][o.id] = o.label; });
+      });
+
+      const tbody = document.getElementById('bulk-rows');
+      const startBtns = Array.from(document.querySelectorAll('[data-bulk-start]'));
+      const summary = document.getElementById('bulk-summary');
+      const errorBox = document.getElementById('bulk-error');
+      const done = document.getElementById('bulk-done');
+      const doneText = document.getElementById('bulk-done-text');
+      const clearDoneBtn = document.getElementById('bulk-clear-done');
+
+      // Every Add photo field, in Add photo's order.
+      //   type: 'text' (default) | 'date' | 'pick' (dropdown of values from the admin)
+      const COLUMNS = [
+        { key: 'link', label: 'Drive link', required: true, width: 250, placeholder: 'https://drive.google.com/file/d/…' },
+        { key: 'title', label: 'Panel title', required: true, width: 200 },
+        { key: 'slug', label: 'Slug', required: true, width: 180 },
+        { key: 'cap', label: 'Hover caption', width: 170 },
+        { key: 'ref', label: 'Caption', width: 170 },
+        { key: 'category', label: 'Category', width: 170, type: 'pick' },
+        { key: 'collections', label: 'Collections', width: 190, type: 'pick', multi: true },
+        { key: 'camera', label: 'Camera', width: 170, type: 'pick' },
+        { key: 'lens', label: 'Lens', width: 170, type: 'pick' },
+        { key: 'date', label: 'Date', width: 145, type: 'date' },
+        { key: 'location', label: 'State / Country', width: 190, type: 'pick' },
+        { key: 'place', label: 'Location', width: 180 },
+        { key: 'settings', label: 'Settings', width: 170 },
+        { key: 'description', label: 'About the photo', width: 250 },
+        { key: 'tags', label: 'Tags', width: 200, placeholder: 'tiger, corbett' },
+        { key: 'alt', label: 'Alt text', width: 170 }
+      ];
+      const TEXT_COLS = COLUMNS.filter(function (c) { return c.type !== 'pick'; }).map(function (c) { return c.key; });
+      const PICK_COLS = COLUMNS.filter(function (c) { return c.type === 'pick'; }).map(function (c) { return c.key; });
+      // Dropdowns that take one value (the rest take several).
+      const SINGLE = COLUMNS.filter(function (c) { return c.type === 'pick' && !c.multi; }).map(function (c) { return c.key; });
+
+      // Header and column widths: # and Preview, the fields, then Status and ×.
+      (function buildHeader() {
+        const head = document.getElementById('bulk-head');
+        const cols = document.getElementById('bulk-cols');
+        const all = [{ label: '#', width: 40 }, { label: 'Preview', width: 64 }]
+          .concat(COLUMNS, [{ label: 'Status', width: 250 }, { label: '', width: 40 }]);
+        let total = 0;
+        all.forEach(function (c) {
+          const col = document.createElement('col');
+          col.style.width = c.width + 'px';
+          cols.appendChild(col);
+          total += c.width;
+          const th = document.createElement('th');
+          th.className = 'th !px-2' + (c.label === '#' ? ' text-center' : '');
+          th.textContent = c.label;
+          if (c.required) {
+            const star = document.createElement('span');
+            star.className = 'text-red-500';
+            star.textContent = ' *';
+            th.appendChild(star);
+          }
+          head.appendChild(th);
+        });
+        document.getElementById('bulk-table').style.minWidth = total + 'px';
+      })();
+      // Row: { tr, cells: {column: element}, values, check, status, cellErrors, jobId, job }
+      //   check.state: 'empty' | 'checking' | 'ok' | 'error'
+      //   status: 'pending'   — being filled in (editable)
+      //           'queued' / 'processing' — sent to the server's background queue (locked)
+      //           'done'      — photo saved (locked)
+      //           'failed'    — the job failed; editable again, with Retry
+      let rows = [];
+      let submitting = false;  // a "send to queue" request is in flight
+
+      // ---------- helpers ----------
+
+      function el(tag, cls, text) {
+        const n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text !== undefined) n.textContent = text;
+        return n;
+      }
+
+      // Mirrors driveFileId() in src/utils/googleDrive.ts.
+      function driveFileId(raw) {
+        let url;
+        try { url = new URL(String(raw || '').trim()); } catch (e) { return ''; }
+        if (!/^https?:$/.test(url.protocol) || !/^(drive|docs|drive\.usercontent)\.google\.com$/.test(url.hostname)) return '';
+        const fromPath = url.pathname.match(/\/file\/d\/([A-Za-z0-9_-]{10,})/);
+        const id = fromPath ? fromPath[1] : url.searchParams.get('id') || '';
+        return /^[A-Za-z0-9_-]{10,}$/.test(id) ? id : '';
+      }
+
+      // "IMG_2041-tiger_walk.jpg" -> "IMG 2041 tiger walk"
+      function titleFromFilename(name) {
+        return String(name || '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+
+      function isBlank(row) {
+        const v = row.values;
+        return TEXT_COLS.every(function (k) { return !v[k].trim(); }) &&
+          PICK_COLS.every(function (k) { return !v[k].length; });
+      }
+
+      // Must match slugify() in src/controllers/photoController.ts.
+      function slugify(s) {
+        return String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      }
+
+      // DD/MM/YYYY (or DD-MM-YY) pasted into Date becomes YYYY-MM-DD.
+      function normalizeDate(raw) {
+        const v = String(raw || '').trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+        const m = v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/);
+        if (!m) return '';
+        const year = m[3].length === 2 ? '20' + m[3] : m[3];
+        return year + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+      }
+
+      function setValue(row, key, value) {
+        row.values[key] = value;
+        row.cells[key].value = value;
+      }
+
+      // Slug and alt text follow the panel title until they're typed by hand.
+      function syncFromTitle(row) {
+        if (!row.slugTyped) setValue(row, 'slug', slugify(row.values.title));
+        if (!row.altTyped) setValue(row, 'alt', row.values.title.trim());
+      }
+
+      // Called whenever a text cell gets a new value (typed, pasted or filled down).
+      function onTextChange(row, key, byHand) {
+        clearCellError(row, key);
+        if (key === 'title') {
+          if (byHand) row.titleTyped = true;
+          syncFromTitle(row);
+          clearCellError(row, 'slug');
+        }
+        if (key === 'slug' && byHand) row.slugTyped = row.values.slug.trim() !== '';
+        if (key === 'alt' && byHand) row.altTyped = row.values.alt.trim() !== '';
+      }
+
+      function editable(row) {
+        return !submitting && (row.status === 'pending' || row.status === 'failed');
+      }
+
+      function active(row) {
+        return row.status === 'queued' || row.status === 'processing';
+      }
+
+      // ---------- rows ----------
+
+      function textCell(row, col) {
+        const key = col.key;
+        const input = el('input', 'w-full rounded-md border border-transparent bg-transparent px-2 py-1.5 text-[12px] text-ink outline-none hover:border-line2 focus:border-amber focus:bg-white disabled:text-mute');
+        input.type = col.type === 'date' ? 'date' : 'text';
+        input.placeholder = col.placeholder || '';
+        input.autocomplete = 'off';
+        input.spellcheck = ['link', 'slug', 'settings'].indexOf(key) === -1;
+        input.addEventListener('input', function () {
+          row.values[key] = input.value;
+          onTextChange(row, key, true);
+          if (key === 'link') onLinkInput(row, false); else renderRow(row);
+          afterChange();
+        });
+        input.addEventListener('blur', function () {
+          if (key === 'link') onLinkInput(row, true);
+          // A cleared slug goes back to following the title.
+          if (key === 'slug') {
+            const clean = slugify(input.value);
+            if (!clean) row.slugTyped = false;
+            setValue(row, 'slug', clean || slugify(row.values.title));
+            renderRow(row);
+            afterChange();
+          }
+        });
+        // Pasting several lines fills this column downwards, adding rows as needed.
+        input.addEventListener('paste', function (e) {
+          const text = (e.clipboardData || window.clipboardData).getData('text');
+          const lines = text.split(/\r?\n/).map(function (l) { return l.trim(); });
+          while (lines.length && !lines[lines.length - 1]) lines.pop();
+          if (lines.length < 2) return;
+          e.preventDefault();
+          fillDown(row, key, lines);
+        });
+        // Enter moves to the same column on the next row (adding one at the end).
+        input.addEventListener('keydown', function (e) {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          const i = rows.indexOf(row) + 1;
+          (rows[i] || addRow()).cells[key].focus();
+        });
+        return input;
+      }
+
+      function pickerCell(row, key) {
+        const btn = el('button', 'flex min-h-[30px] w-full flex-wrap items-center gap-1 rounded-md border border-transparent px-2 py-1 text-left text-[12px] hover:border-line2 focus:border-amber focus:outline-none disabled:cursor-default');
+        btn.type = 'button';
+        btn.addEventListener('click', function () {
+          if (editable(row)) openPicker(btn, key, row);
+        });
+        return btn;
+      }
+
+      function renderPicker(row, key) {
+        const btn = row.cells[key];
+        btn.innerHTML = '';
+        const ids = SINGLE.indexOf(key) !== -1 ? (row.values[key] ? [row.values[key]] : []) : row.values[key];
+        if (!ids.length) {
+          btn.appendChild(el('span', 'text-mute', 'Select…'));
+          return;
+        }
+        ids.forEach(function (id) {
+          btn.appendChild(el('span', 'max-w-full truncate rounded-full bg-sand px-2 py-0.5 text-[11px] text-ink', LABELS[key][id] || '?'));
+        });
+      }
+
+      function addRow(values, opts) {
+        const row = {
+          values: {},
+          check: { state: 'empty' },
+          status: 'pending',
+          cells: {},
+          cellErrors: {},
+          titleTyped: false,
+          slugTyped: false,
+          altTyped: false,
+          jobId: null,
+          job: null
+        };
+        COLUMNS.forEach(function (c) { row.values[c.key] = c.multi ? [] : ''; });
+        row.values.live = 'draft'; // 'draft' | 'live', chosen in the Status cell
+        const tr = el('tr', 'border-b border-[#eee7dd] align-middle');
+        row.tr = tr;
+        const numTd = el('td', 'px-2 py-1 text-center text-[11px] text-mute');
+        row.num = el('span');
+        numTd.appendChild(row.num);
+        row.preview = el('td', 'px-2 py-1');
+
+        COLUMNS.forEach(function (c) {
+          row.cells[c.key] = c.type === 'pick' ? pickerCell(row, c.key) : textCell(row, c);
+        });
+        row.statusCell = el('td', 'px-2 py-1 text-[11px] leading-snug');
+        const statusWrap = el('div', 'flex items-center gap-2');
+        // Draft / Published switch for this row (locked once uploaded).
+        row.liveBtn = el('button', 'shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wider');
+        row.liveBtn.type = 'button';
+        row.liveBtn.addEventListener('click', function () {
+          if (!editable(row)) return;
+          row.values.live = row.values.live === 'live' ? 'draft' : 'live';
+          renderRow(row);
+          afterChange();
+        });
+        row.statusMsg = el('div', 'min-w-0 flex-1');
+        statusWrap.append(row.liveBtn, row.statusMsg);
+        row.statusCell.appendChild(statusWrap);
+
+        const removeTd = el('td', 'px-1 py-1 text-center');
+        row.remove = el('button', 'text-[16px] leading-none text-mute hover:text-red-600');
+        row.remove.type = 'button';
+        row.remove.title = 'Remove row';
+        row.remove.innerHTML = '&times;';
+        row.remove.addEventListener('click', function () { removeRows([row]); });
+        removeTd.appendChild(row.remove);
+
+        tr.append(numTd, row.preview);
+        COLUMNS.forEach(function (c) {
+          const td = el('td', 'px-1 py-1');
+          td.appendChild(row.cells[c.key]);
+          tr.appendChild(td);
+        });
+        tr.append(row.statusCell, removeTd);
+        tbody.appendChild(tr);
+        rows.push(row);
+
+        PICK_COLS.forEach(function (k) { renderPicker(row, k); });
+        if (values) {
+          Object.keys(row.values).forEach(function (k) {
+            if (values[k] === undefined) return;
+            row.values[k] = Array.isArray(row.values[k]) ? [].concat(values[k]).map(String) : String(values[k]);
+            if (TEXT_COLS.indexOf(k) !== -1) row.cells[k].value = row.values[k];
+          });
+          // Drop dropdown values that no longer exist in the admin.
+          PICK_COLS.forEach(function (k) {
+            if (Array.isArray(row.values[k])) row.values[k] = row.values[k].filter(function (id) { return LABELS[k][id]; });
+            else if (row.values[k] && !LABELS[k][row.values[k]]) row.values[k] = '';
+            renderPicker(row, k);
+          });
+          row.values.live = values.live === 'live' ? 'live' : 'draft';
+          if (values.jobId) row.jobId = values.jobId;
+          row.titleTyped = !!row.values.title.trim();
+          row.slugTyped = !!row.values.slug && row.values.slug !== slugify(row.values.title);
+          row.altTyped = !!row.values.alt && row.values.alt !== row.values.title.trim();
+          syncFromTitle(row);
+          if (row.values.link.trim() && !(opts && opts.noCheck)) onLinkInput(row, true);
+        }
+        renderRow(row);
+        afterChange();
+        return row;
+      }
+
+      // Pasted lines go into this row's column and the ones below it.
+      function fillDown(row, key, lines) {
+        let i = rows.indexOf(row);
+        lines.forEach(function (line) {
+          while (rows[i] && !editable(rows[i])) i++; // skip uploaded rows
+          const target = rows[i] || addRow();
+          setValue(target, key, key === 'date' ? normalizeDate(line) : key === 'slug' ? slugify(line) : line);
+          onTextChange(target, key, true);
+          if (key === 'link') onLinkInput(target, true); else renderRow(target);
+          i = rows.indexOf(target) + 1;
+        });
+        afterChange();
+      }
+
+      // ---------- link checks ----------
+
+      const CHECK_LIMIT = 4;
+      let checksRunning = 0;
+      const checkQueue = [];
+
+      function onLinkInput(row, now) {
+        clearTimeout(row.checkTimer);
+        const link = row.values.link.trim();
+        if (!link) {
+          row.check = { state: 'empty' };
+        } else if (!driveFileId(link)) {
+          row.check = { state: 'error', link: link, message: 'Not a Google Drive file link.' };
+        } else if (row.check.link !== link || row.check.state === 'empty' ||
+          // Leaving a failed link's cell re-checks it (e.g. after fixing its sharing in Drive).
+          (now && row.check.state === 'error' && !row.check.duplicate)) {
+          row.check = { state: 'checking', link: link, fileId: driveFileId(link) };
+          row.checkTimer = setTimeout(function () { queueCheck(row, link); }, now ? 0 : 600);
+        }
+        renderRow(row);
+        afterChange();
+      }
+
+      function queueCheck(row, link) {
+        if (row.check.promise) return;
+        row.check.promise = new Promise(function (resolve) {
+          checkQueue.push({ row: row, link: link, resolve: resolve });
+          pumpChecks();
+        });
+      }
+
+      function pumpChecks() {
+        while (checksRunning < CHECK_LIMIT && checkQueue.length) {
+          const job = checkQueue.shift();
+          checksRunning++;
+          runCheck(job).finally(function () {
+            checksRunning--;
+            job.resolve();
+            pumpChecks();
+          });
+        }
+      }
+
+      // POST /admin/photos/bulk/check — server opens the link and reads its first bytes.
+      async function runCheck(job) {
+        const row = job.row;
+        if (row.values.link.trim() !== job.link) return; // link changed meanwhile
+        let data;
+        try {
+          const res = await fetch('/admin/photos/bulk/check', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: job.link })
+          });
+          if (res.redirected && res.url.indexOf('/admin/login') !== -1) {
+            data = { ok: false, error: 'Your login has expired. Log in again in another tab, then edit the link to re-check.' };
+          } else {
+            data = await res.json();
+          }
+        } catch (e) {
+          data = { ok: false, error: "Couldn't check the link. Check your connection, then edit the link to retry." };
+        }
+        if (row.values.link.trim() !== job.link) return;
+        row.check = data.ok
+          ? { state: 'ok', link: job.link, fileId: data.fileId, filename: data.filename }
+          : { state: 'error', link: job.link, fileId: data.fileId, message: data.error, duplicate: data.duplicate };
+        // A good link fills an empty title from the Drive file name.
+        if (data.ok && !row.titleTyped && !row.values.title.trim() && data.filename) {
+          setValue(row, 'title', titleFromFilename(data.filename));
+          onTextChange(row, 'title', false);
+        }
+        renderRow(row);
+        afterChange();
+      }
+
+      // ---------- rendering ----------
+
+      function clearCellError(row, key) {
+        delete row.cellErrors[key];
+        if (row.status === 'failed') row.uploadError = '';
+      }
+
+      function paintCell(row, key, message) {
+        const c = row.cells[key];
+        c.classList.toggle('!border-red-400', !!message);
+        c.classList.toggle('!bg-red-50', !!message);
+        c.title = message || '';
+      }
+
+      function setPreview(row) {
+        const id = row.check.state === 'ok' ? row.check.fileId : '';
+        if (row.previewId === id) return;
+        row.previewId = id;
+        row.preview.innerHTML = '';
+        if (!id) {
+          row.preview.appendChild(el('div', 'h-9 w-12 rounded bg-[#efe9e0]'));
+          return;
+        }
+        const img = el('img', 'h-9 w-12 rounded bg-[#e6e0d7] object-cover');
+        img.alt = '';
+        img.referrerPolicy = 'no-referrer';
+        img.loading = 'lazy';
+        img.src = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(id) + '&sz=w160';
+        img.addEventListener('error', function () { img.replaceWith(el('div', 'h-9 w-12 rounded bg-[#e6e0d7]')); });
+        row.preview.appendChild(img);
+      }
+
+      function statusLine(row, cls, text, href) {
+        row.statusMsg.innerHTML = '';
+        const span = el('span', cls);
+        if (href) {
+          const a = el('a', 'underline hover:no-underline', text);
+          a.href = href;
+          a.target = '_blank';
+          span.appendChild(a);
+        } else {
+          span.textContent = text;
+        }
+        row.statusMsg.appendChild(span);
+      }
+
+      const STAGE_TEXT = {
+        queued: 'In queue…',
+        checking: 'Checking…',
+        downloading: 'Downloading…',
+        storing: 'Storing image…',
+        saving: 'Saving photo…'
+      };
+
+      // Per-row progress while the server's worker handles the row.
+      function renderProgress(row) {
+        const job = row.job || { stage: 'queued', progress: 0 };
+        const pct = row.status === 'queued' ? 0 : Math.max(2, Math.min(100, job.progress || 0));
+        row.statusMsg.innerHTML = '';
+        const label = el('div', 'flex justify-between gap-2 text-amberink');
+        label.append(el('span', 'truncate', STAGE_TEXT[row.status === 'queued' ? 'queued' : job.stage] || 'Processing…'),
+          el('span', 'shrink-0 tabular-nums', row.status === 'queued' ? '' : pct + '%'));
+        const bar = el('div', 'mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[#efe9e0]');
+        const fill = el('div', 'h-full rounded-full bg-amber transition-all duration-500');
+        fill.style.width = pct + '%';
+        bar.appendChild(fill);
+        row.statusMsg.append(label, bar);
+      }
+
+      // The link's own problem (bad link, can't open, not an image, duplicate), if any.
+      function linkProblem(row) {
+        if (row.check.state === 'error') return row.check.duplicate ? 'Already uploaded.' : (row.check.message || 'Link problem.');
+        if (row.dupOf) return 'Same Drive file as row ' + row.dupOf + '.';
+        return '';
+      }
+
+      function renderRow(row) {
+        setPreview(row);
+        const c = row.check;
+        const errKey = COLUMNS.map(function (c) { return c.key; }).find(function (k) { return row.cellErrors[k]; });
+        const firstError = errKey ? row.cellErrors[errKey] : '';
+
+        if (row.status === 'done') {
+          statusLine(row, 'font-medium text-pine', 'Uploaded · Edit', '/admin/photos/' + encodeURIComponent(row.uploadedSlug) + '/edit');
+        } else if (active(row)) {
+          renderProgress(row);
+        } else if (c.state === 'error' && c.duplicate) {
+          statusLine(row, 'text-red-600', 'Already uploaded as "' + c.duplicate.title + '"', '/admin/photos/' + encodeURIComponent(c.duplicate.slug) + '/edit');
+        } else if (linkProblem(row)) {
+          statusLine(row, 'text-red-600', linkProblem(row));
+        } else if (row.uploadError) {
+          statusLine(row, 'text-red-600', row.uploadError);
+        } else if (firstError) {
+          statusLine(row, 'text-red-600', firstError);
+        } else if (c.state === 'checking') {
+          statusLine(row, 'text-mute', 'Checking link…');
+        } else if (c.state === 'ok') {
+          statusLine(row, 'text-pine', '✓ Image found' + (c.filename ? ' · ' + c.filename : ''));
+        } else {
+          row.statusMsg.innerHTML = '';
+        }
+        // A failed row can be sent again on its own.
+        if (row.status === 'failed' && editable(row)) {
+          const retry = el('button', 'ml-1 font-semibold text-pine underline hover:no-underline', 'Retry');
+          retry.type = 'button';
+          retry.addEventListener('click', function () { send([row]); });
+          row.statusMsg.firstChild ? row.statusMsg.firstChild.appendChild(retry) : row.statusMsg.appendChild(retry);
+        }
+
+        const isLive = row.values.live === 'live';
+        row.liveBtn.textContent = isLive ? 'Published' : 'Draft';
+        row.liveBtn.className = 'shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ' +
+          (isLive ? 'border-pine bg-pine text-cream' : 'border-line2 bg-white text-mute') +
+          (editable(row) ? ' hover:opacity-80' : ' cursor-default');
+        row.liveBtn.title = editable(row) ? 'Click to switch between Draft and Published' : '';
+        row.liveBtn.disabled = !editable(row);
+
+        paintCell(row, 'link', linkProblem(row) || row.cellErrors.link);
+        COLUMNS.forEach(function (c) { if (c.key !== 'link') paintCell(row, c.key, row.cellErrors[c.key]); });
+
+        const lock = !editable(row);
+        TEXT_COLS.concat(PICK_COLS).forEach(function (k) { row.cells[k].disabled = lock; });
+        // Rows being processed can't be removed; uploaded ones can be cleared away.
+        row.remove.classList.toggle('invisible', active(row) || submitting);
+        row.tr.classList.toggle('bg-[#f6f9f6]', row.status === 'done');
+      }
+
+      // Flags rows whose Drive file already appears higher up in the grid.
+      function markGridDuplicates() {
+        const seen = {};
+        rows.forEach(function (row, i) {
+          const id = row.values.link.trim() ? driveFileId(row.values.link) : '';
+          const prev = row.dupOf;
+          row.dupOf = id && seen[id] && (row.status === 'pending' || row.status === 'failed') ? seen[id] : null;
+          if (id && !seen[id]) seen[id] = i + 1;
+          if (prev !== row.dupOf) renderRow(row);
+        });
+      }
+
+      // ---------- draft saved on the server ----------
+      // Rows still being filled in (and failed rows being fixed) are saved to the
+      // bulk_upload_drafts table per admin user, so leaving the page or another
+      // browser doesn't lose them. Rows sent to the queue live in bulk_upload_jobs.
+
+      const saveState = document.getElementById('bulk-save-state');
+      let loadingDraft = true;  // no saving while the saved draft is being put back
+      let saveTimer = null;
+      let saving = false;       // a save request is in flight
+      let dirty = false;        // the grid changed since the last successful save
+      let saveFailed = false;
+
+      function draftRows() {
+        return rows.filter(function (r) { return (r.status === 'pending' || r.status === 'failed') && !isBlank(r); })
+          .map(function (r) { return Object.assign({ jobId: r.status === 'failed' ? r.jobId : null }, r.values); });
+      }
+
+      function showSaveState(text, cls) {
+        saveState.textContent = text;
+        saveState.className = 'text-xs ' + (cls || 'text-mute');
+      }
+
+      function saveDraft() {
+        if (loadingDraft) return;
+        dirty = true;
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(sendDraft, 800);
+      }
+
+      // One save at a time; changes made meanwhile go in the next one.
+      async function sendDraft() {
+        if (saving) return;
+        saving = true;
+        dirty = false;
+        showSaveState('Saving draft…');
+        let ok = false;
+        let message = "Couldn't save the draft. Retrying…";
+        try {
+          const res = await fetch('/admin/photos/bulk/draft', {
+            method: 'PUT',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rows: draftRows() })
+          });
+          if (res.redirected && res.url.indexOf('/admin/login') !== -1) {
+            message = 'Draft not saved: your login has expired. Log in again in another tab.';
+          } else {
+            ok = res.ok;
+          }
+        } catch (e) { /* offline: retried below */ }
+        saving = false;
+        saveFailed = !ok;
+        if (ok) {
+          showSaveState(dirty ? 'Saving draft…' : 'Draft saved');
+          if (dirty) sendDraft();
+        } else {
+          dirty = true;
+          showSaveState(message, 'text-red-600');
+          clearTimeout(saveTimer);
+          saveTimer = setTimeout(sendDraft, 5000);
+        }
+      }
+
+      function afterChange() {
+        saveDraft();
+        rows.forEach(function (row, i) { row.num.textContent = i + 1; });
+        markGridDuplicates();
+        const filled = rows.filter(function (r) { return editable(r) && !isBlank(r); }).length;
+        const working = rows.filter(active).length;
+        const uploaded = rows.filter(function (r) { return r.status === 'done'; }).length;
+        summary.textContent = [filled + ' to upload', working ? working + ' uploading' : '', uploaded ? uploaded + ' uploaded' : '']
+          .filter(Boolean).join(' · ');
+        startBtns.forEach(function (b) { b.disabled = submitting || filled === 0; });
+        clearDoneBtn.classList.toggle('hidden', !uploaded);
+      }
+
+      // ---------- dropdown picker ----------
+
+      const picker = document.getElementById('bulk-picker');
+      const pickerSearch = document.getElementById('bulk-picker-search');
+      const pickerList = document.getElementById('bulk-picker-list');
+      const pickerNote = document.getElementById('bulk-picker-note');
+      const pickerClear = document.getElementById('bulk-picker-clear');
+      let pick = null; // { anchor, key, row }
+
+      function openPicker(anchor, key, row) {
+        pick = { anchor: anchor, key: key, row: row };
+        pickerSearch.value = '';
+        pickerSearch.placeholder = 'Search ' + ({ category: 'categories', camera: 'cameras', lens: 'lenses', location: 'states / countries' }[key] || key) + '…';
+        const r = anchor.getBoundingClientRect();
+        picker.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 300)) + 'px';
+        picker.style.top = (r.bottom + 4) + 'px';
+        picker.classList.remove('hidden');
+        renderPickerList();
+        // Flip above the cell when there's no room below.
+        const h = picker.offsetHeight;
+        if (r.bottom + 4 + h > window.innerHeight) picker.style.top = Math.max(8, r.top - h - 4) + 'px';
+        pickerSearch.focus();
+      }
+
+      function closePicker() {
+        if (!pick) return;
+        const anchor = pick.anchor;
+        pick = null;
+        picker.classList.add('hidden');
+        anchor.focus({ preventScroll: true });
+      }
+
+      function renderPickerList() {
+        const key = pick.key;
+        const multi = SINGLE.indexOf(key) === -1;
+        const q = pickerSearch.value.trim().toLowerCase();
+        const selected = multi ? pick.row.values[key] : [pick.row.values[key]];
+        const all = OPTIONS[key].filter(function (o) { return !q || o.label.toLowerCase().indexOf(q) !== -1; });
+        // Locations run to thousands: list the first 100 matches.
+        const shown = all.slice(0, 100);
+        pickerList.innerHTML = '';
+        shown.forEach(function (o) {
+          const on = selected.indexOf(o.id) !== -1;
+          const item = el('button', 'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-ink hover:bg-sand' + (on ? ' font-medium' : ''));
+          item.type = 'button';
+          item.append(el('span', 'w-3 shrink-0 text-pine', on ? '✓' : ''), el('span', 'truncate', o.label));
+          item.addEventListener('click', function () { choose(o.id); });
+          pickerList.appendChild(item);
+        });
+        if (!shown.length) {
+          pickerList.appendChild(el('p', 'px-2 py-1.5 text-[12px] text-mute',
+            OPTIONS[key].length ? 'No matches. New values are added in the admin first.' : 'None in the admin yet. Add them there first.'));
+        }
+        pickerNote.textContent = all.length > shown.length
+          ? 'Showing 100 of ' + all.length + ', type to narrow'
+          : (multi ? selected.length + ' selected' : '');
+      }
+
+      function choose(id) {
+        const row = pick.row;
+        const key = pick.key;
+        clearCellError(row, key);
+        if (SINGLE.indexOf(key) !== -1) {
+          row.values[key] = row.values[key] === id ? '' : id;
+          renderPicker(row, key);
+          renderRow(row);
+          afterChange();
+          closePicker();
+          return;
+        }
+        const list = row.values[key];
+        const at = list.indexOf(id);
+        if (at === -1) list.push(id); else list.splice(at, 1);
+        renderPicker(row, key);
+        renderRow(row);
+        renderPickerList();
+        afterChange();
+      }
+
+      pickerSearch.addEventListener('input', renderPickerList);
+      pickerSearch.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { e.preventDefault(); closePicker(); }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const first = pickerList.querySelector('button');
+          if (first) first.click();
+        }
+      });
+      pickerClear.addEventListener('click', function () {
+        const row = pick.row;
+        row.values[pick.key] = SINGLE.indexOf(pick.key) !== -1 ? '' : [];
+        clearCellError(row, pick.key);
+        renderPicker(row, pick.key);
+        renderRow(row);
+        renderPickerList();
+        afterChange();
+      });
+      document.addEventListener('mousedown', function (e) {
+        if (pick && !picker.contains(e.target) && !pick.anchor.contains(e.target)) closePicker();
+      });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && pick) closePicker(); });
+      window.addEventListener('resize', closePicker);
+      // Close when the page or the grid scrolls (the dropdown is fixed-positioned).
+      window.addEventListener('scroll', function (e) { if (pick && !picker.contains(e.target)) closePicker(); }, true);
+
+      // ---------- validation & upload ----------
+
+      // Waits for link checks still running, then flags every problem in `todo`.
+      // Nothing is sent while any of them has one.
+      async function validate(todo) {
+        todo.forEach(function (r) {
+          if (r.check.state === 'checking') { clearTimeout(r.checkTimer); queueCheck(r, r.check.link); }
+        });
+        await Promise.all(todo.map(function (r) { return r.check.promise; }).filter(Boolean));
+
+        let bad = 0;
+        let first = null;
+        const slugRow = {}; // slug -> first row number using it
+        rows.forEach(function (row, i) {
+          const sl = slugify(row.values.slug);
+          if (sl && !slugRow[sl] && (!editable(row) || row.slugTyped)) slugRow[sl] = i + 1;
+        });
+        todo.forEach(function (row) {
+          row.cellErrors = {};
+          if (!row.values.link.trim()) row.cellErrors.link = 'Drive link is required.';
+          else if (row.check.state !== 'ok' && !linkProblem(row)) row.cellErrors.link = 'Link not checked yet.';
+          if (!row.values.title.trim()) row.cellErrors.title = 'Panel title is required.';
+          const sl = slugify(row.values.slug);
+          const n = rows.indexOf(row) + 1;
+          if (!sl) row.cellErrors.slug = 'Slug is required.';
+          // Slugs made from the title get -2, -3… on the server; a typed one must be unique.
+          else if (row.slugTyped && slugRow[sl] && slugRow[sl] !== n) row.cellErrors.slug = 'Same slug as row ' + slugRow[sl] + '.';
+          if (row.values.date && !/^\d{4}-\d{2}-\d{2}$/.test(row.values.date)) row.cellErrors.date = 'Not a valid date.';
+          renderRow(row);
+          const badKey = (linkProblem(row) || row.cellErrors.link) ? 'link'
+            : COLUMNS.map(function (c) { return c.key; }).find(function (k) { return row.cellErrors[k]; });
+          if (!badKey) return;
+          bad++;
+          if (!first) first = row.cells[badKey];
+        });
+
+        if (bad) {
+          errorBox.textContent = bad + ' row' + (bad === 1 ? ' needs' : 's need') +
+            ' fixing before anything is uploaded. The problems are highlighted in red and explained under Status.';
+          rows.forEach(renderRow);
+          errorBox.classList.remove('hidden');
+          first.scrollIntoView({ block: 'center', inline: 'center' });
+          first.focus({ preventScroll: true });
+          return null;
+        }
+        errorBox.classList.add('hidden');
+        return todo;
+      }
+
+      // Field names in the server's errors -> grid columns.
+      const FIELD_OF = { drive_url: 'link', title: 'title', slug: 'slug', date: 'date', category: 'category',
+        collections: 'collections', camera: 'camera', lens: 'lens', location: 'location' };
+
+      function payloadOf(row) {
+        const v = row.values;
+        return {
+          jobId: row.status === 'failed' ? row.jobId : null,
+          drive_url: v.link.trim(),
+          title: v.title.trim(),
+          slug: slugify(v.slug),
+          slug_auto: row.slugTyped ? '0' : '1',
+          cap: v.cap.trim(),
+          ref: v.ref.trim(),
+          category_id: v.category || null,
+          collection_ids: v.collections,
+          camera_id: v.camera || null,
+          lens_id: v.lens || null,
+          date: v.date,
+          country_id: v.location || null,
+          location: v.place.trim(),
+          settings: v.settings.trim(),
+          description: v.description,
+          tags: v.tags,
+          alt: v.alt.trim(),
+          live: v.live
+        };
+      }
+
+      // The grid's row values from a queued job's payload (see payloadOf).
+      function valuesOf(p) {
+        return {
+          link: p.drive_url || '', title: p.title || '', slug: p.slug || '', cap: p.cap || '', ref: p.ref || '',
+          category: p.category_id ? String(p.category_id) : '', collections: (p.collection_ids || []).map(String),
+          camera: p.camera_id ? String(p.camera_id) : '', lens: p.lens_id ? String(p.lens_id) : '', date: p.date || '',
+          location: p.country_id ? String(p.country_id) : '', place: p.location || '', settings: p.settings || '',
+          description: p.description || '', tags: p.tags || '', alt: p.alt || '', live: p.live === 'live' ? 'live' : 'draft'
+        };
+      }
+
+      // Puts a job's state onto its row.
+      function applyJob(row, job) {
+        row.jobId = job.id;
+        row.job = job;
+        if (job.status === 'done') {
+          row.status = 'done';
+          row.uploadedSlug = job.slug;
+        } else if (job.status === 'failed') {
+          row.status = 'failed';
+          row.uploadError = job.error || 'Upload failed.';
+          // A problem with one field is also shown on that cell.
+          const col = FIELD_OF[job.errorField];
+          if (col) row.cellErrors[col] = job.error;
+          if (col === 'link') row.check = { state: 'error', link: row.values.link.trim(), fileId: row.check.fileId, message: job.error };
+        } else {
+          row.status = job.status; // queued | processing
+        }
+        renderRow(row);
+      }
+
+      // Sends rows to the server's background queue. All of them are checked
+      // first (here, then on the server); if any has a problem, none are sent.
+      async function send(todo) {
+        if (submitting || !todo.length) return;
+        closePicker();
+        done.classList.add('hidden');
+        startBtns.forEach(function (b) { b.disabled = true; });
+        if (!(await validate(todo))) { afterChange(); return; }
+
+        submitting = true;
+        rows.forEach(renderRow);
+        let data;
+        try {
+          const res = await fetch('/admin/photos/bulk/jobs', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rows: todo.map(payloadOf) })
+          });
+          if (res.redirected && res.url.indexOf('/admin/login') !== -1) {
+            data = { success: false, error: 'Your login has expired. Log in again in another tab, then upload again.' };
+          } else {
+            data = await res.json().catch(function () { return { success: false, error: 'Unexpected reply from the server (' + res.status + ').' }; });
+          }
+        } catch (e) {
+          data = { success: false, error: "Couldn't reach the server. Check your connection and try again." };
+        }
+        submitting = false;
+
+        if (data.success) {
+          todo.forEach(function (row, i) {
+            row.uploadError = '';
+            row.cellErrors = {};
+            applyJob(row, { id: data.jobs[i].id, status: 'queued', stage: 'queued', progress: 0 });
+          });
+          batch = batch.concat(todo);
+          errorBox.classList.add('hidden');
+          // Keep a row ready for the next photo.
+          if (!rows.some(editable)) addRow();
+          startPolling();
+        } else {
+          // Problems found by the server go on their rows' cells.
+          (data.rows || []).forEach(function (r, i) {
+            const row = todo[i];
+            Object.keys(r.errors || {}).forEach(function (k) { if (FIELD_OF[k]) row.cellErrors[FIELD_OF[k]] = r.errors[k]; });
+            if (r.duplicate) row.check = { state: 'error', link: row.values.link.trim(), fileId: row.check.fileId, message: 'Already uploaded.', duplicate: r.duplicate };
+          });
+          errorBox.textContent = data.rows ? (data.error + ' The problems are highlighted in red and explained under Status.') : data.error;
+          errorBox.classList.remove('hidden');
+        }
+        rows.forEach(renderRow);
+        afterChange();
+      }
+
+      // ---------- progress from the background queue ----------
+
+      let batch = [];        // rows sent this visit, for the summary when they finish
+      let pollTimer = null;
+
+      function startPolling() {
+        if (!pollTimer) pollTimer = setInterval(poll, 1500);
+      }
+
+      async function poll() {
+        const watching = rows.filter(active);
+        if (!watching.length) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+          return;
+        }
+        let data;
+        try {
+          const res = await fetch('/admin/photos/bulk/jobs?ids=' + watching.map(function (r) { return r.jobId; }).join(','), { credentials: 'same-origin' });
+          if (res.redirected) return; // logged out: keep the rows as they are
+          data = await res.json();
+        } catch (e) {
+          return; // offline for a moment: try again on the next tick
+        }
+        const byId = {};
+        (data.jobs || []).forEach(function (j) { byId[j.id] = j; });
+        watching.forEach(function (row) { if (byId[row.jobId]) applyJob(row, byId[row.jobId]); });
+        afterChange();
+
+        if (batch.length && !batch.some(active)) {
+          const ok = batch.filter(function (r) { return r.status === 'done'; });
+          const published = ok.filter(function (r) { return r.values.live === 'live'; }).length;
+          const failed = batch.length - ok.length;
+          doneText.textContent = ok.length + ' of ' + batch.length + ' uploaded' +
+            (ok.length ? ' (' + published + ' published, ' + (ok.length - published) + ' draft)' : '') +
+            (failed ? '. ' + failed + ' failed; fix the red rows and press Retry or Upload.' : '.');
+          done.classList.remove('hidden');
+          batch = [];
+        }
+      }
+
+      function start() {
+        send(rows.filter(function (r) { return editable(r) && !isBlank(r); }));
+      }
+
+      startBtns.forEach(function (b) {
+        b.addEventListener('click', function () { start(); });
+      });
+
+      // Removes rows from the grid. Failed and uploaded rows are also cleared
+      // from the server's job list, so they don't come back next visit.
+      function removeRows(list) {
+        const jobIds = list.filter(function (r) { return r.jobId && !active(r); }).map(function (r) { return r.jobId; });
+        list = list.filter(function (r) { return !active(r); });
+        list.forEach(function (r) { r.tr.remove(); });
+        rows = rows.filter(function (r) { return list.indexOf(r) === -1; });
+        if (jobIds.length) {
+          fetch('/admin/photos/bulk/jobs/dismiss', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: jobIds })
+          }).catch(function () {});
+        }
+        if (!rows.some(editable)) addRow();
+        afterChange();
+      }
+
+      // ---------- toolbar ----------
+
+      const pastePanel = document.getElementById('bulk-paste');
+      const pasteText = document.getElementById('bulk-paste-text');
+      document.getElementById('bulk-add-row').addEventListener('click', function () {
+        addRow().cells.link.focus();
+      });
+      document.getElementById('bulk-paste-toggle').addEventListener('click', function () {
+        pastePanel.classList.toggle('hidden');
+        if (!pastePanel.classList.contains('hidden')) pasteText.focus();
+      });
+      document.getElementById('bulk-paste-cancel').addEventListener('click', function () {
+        pasteText.value = '';
+        pastePanel.classList.add('hidden');
+      });
+      document.getElementById('bulk-paste-add').addEventListener('click', function () {
+        const links = pasteText.value.split(/\s+/).map(function (l) { return l.trim(); }).filter(Boolean);
+        if (!links.length) return;
+        // Fill the empty rows first, then add new ones.
+        links.forEach(function (link) {
+          const empty = rows.find(function (r) { return editable(r) && isBlank(r); });
+          if (empty) {
+            empty.values.link = link;
+            empty.cells.link.value = link;
+            onLinkInput(empty, true);
+          } else {
+            addRow({ link: link });
+          }
+        });
+        pasteText.value = '';
+        pastePanel.classList.add('hidden');
+        afterChange();
+      });
+      clearDoneBtn.addEventListener('click', function () {
+        removeRows(rows.filter(function (r) { return r.status === 'done'; }));
+        done.classList.add('hidden');
+      });
+
+      // Uploads carry on in the background, but leaving before the latest
+      // edits are saved to the draft would lose them.
+      window.addEventListener('beforeunload', function (e) {
+        if (submitting || dirty || saving || saveFailed) { e.preventDefault(); e.returnValue = ''; }
+      });
+
+      // ---------- start: put back running/finished jobs and the saved draft ----------
+
+      const restored = document.getElementById('bulk-restored');
+      document.getElementById('bulk-discard').addEventListener('click', function () {
+        if (submitting) return;
+        removeRows(rows.filter(editable));
+        while (rows.filter(editable).length < 3) addRow();
+        restored.classList.add('hidden');
+        errorBox.classList.add('hidden');
+        done.classList.add('hidden');
+      });
+
+      const draft = DATA.draft;
+      const draftJobIds = (draft ? draft.rows : []).map(function (r) { return r.jobId; }).filter(Boolean);
+
+      // Jobs first (in the order they were sent). A failed job whose row is
+      // being fixed comes from the draft instead, with its edits.
+      DATA.jobs.forEach(function (job) {
+        if (job.status === 'failed' && draftJobIds.indexOf(job.id) !== -1) return;
+        const row = addRow(valuesOf(job.payload || {}), { noCheck: job.status !== 'failed' });
+        applyJob(row, job);
+      });
+
+      if (draft) {
+        draft.rows.forEach(function (values) {
+          const row = addRow(values);
+          if (values.jobId) {
+            applyJob(row, { id: values.jobId, status: 'failed', error: values.jobError, errorField: values.jobErrorField });
+          }
+        });
+        const when = new Date(draft.savedAt);
+        document.getElementById('bulk-restored-text').textContent = 'Restored ' + draft.rows.length +
+          ' unsaved row' + (draft.rows.length === 1 ? '' : 's') + ' from ' +
+          when.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ', ' +
+          when.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) + '.';
+        restored.classList.remove('hidden');
+        showSaveState('Draft saved');
+      }
+      while (rows.filter(editable).length < 3) addRow();
+      if (rows.some(active)) startPolling();
+      loadingDraft = false;
+      afterChange();
+    })();
+  </script>
+  <%- include("partials/footer") %>

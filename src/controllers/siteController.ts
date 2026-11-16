@@ -216,12 +216,16 @@ const buildCameraMenu = (
   return Object.entries(brandMap).map(([brand, models]) => ({ brand, models }));
 };
 
-/** SELECT statement joining entity tables by ID */
+/**
+ * SELECT statement joining entity tables by ID. Only published categories and
+ * collections are joined, so an unpublished one never shows on the site (its
+ * label, its description, or as a filter); the photo itself is still shown.
+ */
 const SELECT_SITE_PHOTOS = `
   SELECT
     p.*,
     cat.name AS cat_name,
-    cat.parent AS cat_parent,
+    catp.name AS cat_parent,
     col.name AS col_name,
     col.description AS col_desc,
     cam.brand AS cam_brand,
@@ -231,8 +235,9 @@ const SELECT_SITE_PHOTOS = `
     co.country AS country_name,
     co.state AS country_state
   FROM photos p
-  LEFT JOIN categories cat ON p.category_id = cat.id
-  LEFT JOIN collections col ON p.collection_id = col.id
+  LEFT JOIN categories cat ON p.category_id = cat.id AND cat.live = 1
+  LEFT JOIN categories catp ON catp.name = cat.parent AND catp.live = 1
+  LEFT JOIN collections col ON p.collection_id = col.id AND col.live = 1
   LEFT JOIN cameras cam ON p.camera_id = cam.id
   LEFT JOIN lenses len ON p.lens_id = len.id
   LEFT JOIN countries co ON p.country_id = co.id
@@ -281,9 +286,24 @@ const getGallery = async (req: Request, res: Response) => {
     const cameras = buildCameraMenu(camRows, photoRows);
     const hasMore = photos.length < total;
 
+    // Flow draws every live photo on one endless canvas (only the tiles on
+    // screen are mounted), so it gets the whole set up front, trimmed to what
+    // a tile and the filters need.
+    const [allRows] = await pool.query<any[]>(`${SELECT_SITE_PHOTOS} WHERE p.live = 1 ORDER BY p.id DESC`);
+    const flowPhotos = allRows.map(r => {
+      const p = mapToSitePhoto(r, {});
+      return {
+        slug: p.slug, t: p.cap || p.title, alt: p.alt,
+        src: p.srcSmall || p.src, srcset: p.srcset, w: p.width, h: p.height, c: p.color,
+        category: p.category, collection: p.collection, camera: p.camera, lens: p.lens,
+        country: p.country, state: p.state, year: p.year,
+      };
+    });
+
     res.render("index", {
       title: "Of Wild & Walls",
       photos,
+      flowPhotos,
       cameras,
       hasMore,
       nextOffset: photos.length,
@@ -389,6 +409,8 @@ const getPhotoDetail = async (req: Request, res: Response) => {
         category: catName,
         parentCategory: (catParent && catParent.trim().toLowerCase() !== "none") ? catParent : "",
         settings: gM("Settings"),
+        // "tiger, corbett" as stored; the viewer shows each as a chip.
+        tags: r.tags || "",
       };
     };
 
@@ -443,7 +465,7 @@ const getFlowAPI = async (req: Request, res: Response) => {
       [limit, offset]
     );
     const [collRows] = await pool.query<DBCollectionRow[]>(
-      "SELECT name, description FROM collections ORDER BY id ASC"
+      "SELECT name, description FROM collections WHERE live = 1 ORDER BY id ASC"
     );
 
     const collectionMap: Record<string, string> = {};
@@ -479,7 +501,7 @@ const getGridAPI = async (req: Request, res: Response) => {
       [limit, offset]
     );
     const [collRows] = await pool.query<DBCollectionRow[]>(
-      "SELECT name, description FROM collections ORDER BY id ASC"
+      "SELECT name, description FROM collections WHERE live = 1 ORDER BY id ASC"
     );
 
     const collectionMap: Record<string, string> = {};
@@ -518,7 +540,7 @@ const getPhotosAPI = async (req: Request, res: Response) => {
 
     const [photoRows] = await pool.query<DBPhotoRow[]>(sql, params);
     const [collRows] = await pool.query<DBCollectionRow[]>(
-      "SELECT name, description FROM collections ORDER BY id ASC"
+      "SELECT name, description FROM collections WHERE live = 1 ORDER BY id ASC"
     );
 
     const collectionMap: Record<string, string> = {};
@@ -559,7 +581,7 @@ const getPhotoBySlugAPI = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: "Photo not found" });
     }
     const [collRows] = await pool.query<DBCollectionRow[]>(
-      "SELECT name, description FROM collections ORDER BY id ASC"
+      "SELECT name, description FROM collections WHERE live = 1 ORDER BY id ASC"
     );
     const collectionMap: Record<string, string> = {};
     collRows.forEach(c => { collectionMap[c.name] = c.description || ""; });
@@ -651,11 +673,11 @@ const getLensesAPI = async (req: Request, res: Response) => {
 };
 
 
-/** GET /api/categories — all categories with live photo count */
+/** GET /api/categories — published categories with live photo count */
 const getCategoriesAPI = async (req: Request, res: Response) => {
   try {
     const [catRows] = await pool.query<RowDataPacket[]>(
-      "SELECT id, name AS title, parent, description FROM categories ORDER BY name ASC"
+      "SELECT id, name AS title, parent, description FROM categories WHERE live = 1 ORDER BY name ASC"
     );
     const [photoRows] = await pool.query<RowDataPacket[]>(
       `${SELECT_SITE_PHOTOS} WHERE p.live = 1`
@@ -735,11 +757,11 @@ const getYearsAPI = async (req: Request, res: Response) => {
   }
 };
 
-/** GET /api/collections — all collections with live photo count */
+/** GET /api/collections — published collections with live photo count */
 const getCollectionsAPI = async (req: Request, res: Response) => {
   try {
     const [collRows] = await pool.query<RowDataPacket[]>(
-      "SELECT id, name AS title, description FROM collections ORDER BY name ASC"
+      "SELECT id, name AS title, description FROM collections WHERE live = 1 ORDER BY name ASC"
     );
     const [photoRows] = await pool.query<RowDataPacket[]>(
       `${SELECT_SITE_PHOTOS} WHERE p.live = 1`

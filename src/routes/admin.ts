@@ -7,6 +7,7 @@ import cameraController from "../controllers/cameraController";
 import countryController from "../controllers/countryController";
 import lensController from "../controllers/lensController";
 import photoController from "../controllers/photoController";
+import bulkUploadController from "../controllers/bulkUploadController";
 import authenticate from "../middleware/authenticate";
 import upload from "../config/multer";
 
@@ -28,16 +29,17 @@ router.post("/logout", authController.logout);
 
 router.get("/photos", authenticate, photoController.getPhotos);
 router.get("/photos/new", authenticate, photoController.getNewPhotoForm);
+
+// Bulk upload (before /photos/:slug so "bulk" isn't taken for a slug)
+router.get("/photos/bulk", authenticate, bulkUploadController.getBulkUploadPage);
+router.put("/photos/bulk/draft", authenticate, bulkUploadController.saveBulkDraft);
+router.post("/photos/bulk/check", authenticate, bulkUploadController.checkBulkLink);
+router.post("/photos/bulk/jobs", authenticate, bulkUploadController.queueBulkJobs);
+router.get("/photos/bulk/jobs", authenticate, bulkUploadController.getBulkJobs);
+router.post("/photos/bulk/jobs/dismiss", authenticate, bulkUploadController.dismissBulkJobs);
 router.get("/photos/:slug/edit", authenticate, photoController.getEditPhotoForm);
 
-import path from "path";
-
 router.post("/photos", authenticate, upload.single("photo"), photoController.createPhoto);
-router.get("/photos/import/failed", authenticate, photoController.getFailedImportsAPI);
-router.get("/photos/import/template", authenticate, (req, res) => {
-  res.download(path.join(process.cwd(), "Photo_Import_Template.csv"));
-});
-router.post("/photos/import", authenticate, upload.single("csv"), photoController.importPhotos);
 router.post("/photos/:slug", authenticate, upload.single("photo"), photoController.updatePhoto);
 router.post("/photos/:slug/toggle", authenticate, photoController.togglePhoto);
 router.post("/photos/:slug/delete", authenticate, photoController.deletePhoto);
@@ -48,6 +50,7 @@ router.get("/categories", authenticate, categoryController.getCategories);
 router.post("/categories", authenticate, categoryController.createCategory);
 router.post("/categories/:index", authenticate, categoryController.updateCategory);
 router.post("/categories/:index/delete", authenticate, categoryController.deleteCategory);
+router.post("/categories/:index/toggle", authenticate, categoryController.toggleCategory);
 
 // ---- Collections -----------------------------------------------------------
 
@@ -55,6 +58,7 @@ router.get("/collections", authenticate, collectionController.getCollections);
 router.post("/collections", authenticate, collectionController.createCollection);
 router.post("/collections/:index", authenticate, collectionController.updateCollection);
 router.post("/collections/:index/delete", authenticate, collectionController.deleteCollection);
+router.post("/collections/:index/toggle", authenticate, collectionController.toggleCollection);
 
 // ---- Cameras ---------------------------------------------------------------
 

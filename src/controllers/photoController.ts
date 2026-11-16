@@ -1,15 +1,9 @@
 import pool from "../db";
 import { Request, Response } from "express";
-import { Readable } from "stream";
-import csvParser from "csv-parser";
-import axios from "axios";
-import fs from "fs";
 import { RowDataPacket } from "mysql2";
 import s3 from "../config/s3";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { DeleteObjectsCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import type { AdminPhoto, MetaItem } from "../types/admin";
-import { canonicalCountry, canonicalState } from "../utils/place";
-import { resolveGearId } from "../utils/gear";
 import { IMMUTABLE_CACHE, s3KeyUrl, siteImageFields, tryCreateImageVariants, type ImageVariantInfo } from "../utils/imageVariants";
 
 interface DBPhotoRow extends RowDataPacket {
@@ -34,6 +28,10 @@ interface DBPhotoRow extends RowDataPacket {
   date: string;
   description: string;
   alt_note?: string;
+  tags?: string | null;
+  species?: string | null;
+  scientific_name?: string | null;
+  drive_file_id?: string | null;
   l: string;
   t: string;
   w: string;
@@ -66,7 +64,7 @@ const uniqueSlug = async (base: string, excludeId: number | null = null): Promis
 // caption (slug_auto). Only an automatic slug is de-duplicated; a hand-typed
 // one that clashes is reported back to the form, so it never changes behind
 // your back.
-const slugFromBody = (req: Request): { slug: string; auto: boolean } => ({
+const slugFromBody = (req: Pick<Request, "body">): { slug: string; auto: boolean } => ({
   slug: slugify(req.body.slug || ""),
   auto: req.body.slug_auto === "1",
 });
@@ -80,13 +78,6 @@ const photoFormError = (req: Request, hasImage: boolean): string => {
   if (!title) missing.push("panel title");
   if (!slugify(req.body.slug || "")) missing.push("slug");
   if (!hasImage) missing.push("image");
-  if (!String(req.body.alt || "").trim()) missing.push("alt text");
-  if (!String(req.body.date || "").trim()) missing.push("date");
-  if (!req.body.camera_id) missing.push("camera");
-  if (!req.body.lens_id) missing.push("lens");
-  // The State / Region select posts the countries-table row id as
-  // country_id, so one chosen state covers both country and state.
-  if (!req.body.country_id) missing.push("country and state");
 
   if (missing.length) return `Please fill in: ${missing.join(", ")}.`;
   return "";
@@ -106,10 +97,55 @@ const readMeta = (body: Request["body"]): MetaItem[] => {
   return metaItems;
 };
 
+/** "Tiger,  wild , ,tiger" -> "Tiger, wild": trimmed, empties dropped, deduped case-insensitively. */
+const normalizeTags = (raw: any): string => {
+  const seen = new Set<string>();
+  return String(raw || "")
+    .split(",")
+    .map(t => t.trim().replace(/\s+/g, " "))
+    .filter(t => {
+      const k = t.toLowerCase();
+      if (!t || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .join(", ");
+};
+
+/** Ids from a repeated form field (string or array), deduped, in the order given. */
+const parseIds = (raw: any): number[] => {
+  const list = Array.isArray(raw) ? raw : raw === undefined || raw === null || raw === "" ? [] : [raw];
+  return [...new Set(list.map((v: any) => parseInt(v, 10)).filter((n: number) => Number.isInteger(n) && n > 0))];
+};
+
+const parseCollectionIds = (body: any): number[] => parseIds(body.collection_ids);
+
+/** Category ids: the multi-select `category_ids`, or a single legacy `category_id`. */
+const parseCategoryIds = (body: any): number[] =>
+  body.category_ids !== undefined ? parseIds(body.category_ids) : parseIds(body.category_id);
+
+/** Replaces a photo's categories. photos.category_id mirrors the first one for legacy readers. */
+const savePhotoCategories = async (photoId: number, ids: number[]) => {
+  await pool.query("DELETE FROM photo_categories WHERE photo_id = ?", [photoId]);
+  if (ids.length) {
+    await pool.query("INSERT IGNORE INTO photo_categories (photo_id, category_id) VALUES ?", [ids.map(id => [photoId, id])]);
+  }
+  await pool.query("UPDATE photos SET category_id = ? WHERE id = ?", [ids[0] ?? null, photoId]);
+};
+
+/** Replaces a photo's collections. photos.collection_id mirrors the first one for legacy readers. */
+const savePhotoCollections = async (photoId: number, ids: number[]) => {
+  await pool.query("DELETE FROM photo_collections WHERE photo_id = ?", [photoId]);
+  if (ids.length) {
+    await pool.query("INSERT IGNORE INTO photo_collections (photo_id, collection_id) VALUES ?", [ids.map(id => [photoId, id])]);
+  }
+  await pool.query("UPDATE photos SET collection_id = ? WHERE id = ?", [ids[0] ?? null, photoId]);
+};
+
 const blankPhoto = (): AdminPhoto => ({
   cap: "", slug: "", title: "", ref: "", category: "", collection: "", camera: "",
   category_id: null, collection_id: null, camera_id: null, lens_id: null, country_id: null, state: "",
-  date: "", about: "", altNote: "", src: "", alt: "",
+  date: "", about: "", altNote: "", tags: "", species: "", scientificName: "", src: "", alt: "",
   l: "", t: "", w: "", h: "", live: true, views: ["Flow", "Grid"],
   meta: []
 });
@@ -124,8 +160,13 @@ const photoFromBody = (req: Request): AdminPhoto & Record<string, any> => {
     category: "",
     collection: "",
     camera: "",
-    category_id: req.body.category_id ? parseInt(req.body.category_id, 10) : null,
-    collection_id: req.body.collection_id ? parseInt(req.body.collection_id, 10) : null,
+    category_id: parseCategoryIds(req.body)[0] ?? null,
+    category_ids: parseCategoryIds(req.body),
+    species: String(req.body.species || "").trim(),
+    scientificName: String(req.body.scientific_name || "").trim(),
+    collection_id: parseCollectionIds(req.body)[0] ?? null,
+    collection_ids: parseCollectionIds(req.body),
+    tags: normalizeTags(req.body.tags),
     camera_id: req.body.camera_id ? parseInt(req.body.camera_id, 10) : null,
     lens_id: req.body.lens_id ? parseInt(req.body.lens_id, 10) : null,
     country_id: req.body.country_id ? parseInt(req.body.country_id, 10) : null,
@@ -217,6 +258,9 @@ const mapDBPhotoToAdminPhoto = (row: DBPhotoRow, collectionDescriptions: Record<
     date: row.date || "",
     about: row.description || "",
     altNote: row.alt_note || "",
+    tags: row.tags || "",
+    species: row.species || "",
+    scientificName: row.scientific_name || "",
     src: photoSrc,
     thumb: img.srcSmall,
     variants,
@@ -312,10 +356,28 @@ const getPhotos = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Categories and collections offered in the Add/Edit photo form: only published
+ * ones, plus any unpublished ones the photo already has (marked as such), so
+ * editing a photo never drops them silently.
+ */
+const formChoices = async (keepCategoryIds: number[] = [], keepCollectionIds: number[] = []) => {
+  const keep = (ids: number[]) => (ids.length ? ids : [0]);
+  const [catRows] = await pool.query<RowDataPacket[]>(
+    "SELECT id, name AS title, live FROM categories WHERE live = 1 OR id IN (?) ORDER BY id ASC",
+    [keep(keepCategoryIds)]
+  );
+  const [collRows] = await pool.query<RowDataPacket[]>(
+    "SELECT id, name AS title, description, live FROM collections WHERE live = 1 OR id IN (?) ORDER BY id ASC",
+    [keep(keepCollectionIds)]
+  );
+  const mark = (r: RowDataPacket) => ({ ...r, title: r.live ? r.title : `${r.title} (unpublished)` });
+  return { catRows: catRows.map(mark), collRows: collRows.map(mark), rawCollRows: collRows };
+};
+
 const getNewPhotoForm = async (req: Request, res: Response) => {
   try {
-    const [catRows] = await pool.query<RowDataPacket[]>("SELECT id, name AS title FROM categories ORDER BY id ASC");
-    const [collRows] = await pool.query<RowDataPacket[]>("SELECT id, name AS title FROM collections ORDER BY id ASC");
+    const { catRows, collRows } = await formChoices();
     const [camRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM cameras ORDER BY id ASC");
     const [lensRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM lenses ORDER BY id ASC");
     const [countryRows] = await pool.query<RowDataPacket[]>("SELECT id, country, state FROM countries ORDER BY country ASC, state ASC");
@@ -343,16 +405,23 @@ const getEditPhotoForm = async (req: Request, res: Response) => {
       return res.status(404).send("Photo not found");
     }
 
-    const [catRows] = await pool.query<RowDataPacket[]>("SELECT id, name AS title FROM categories ORDER BY id ASC");
-    const [collRows] = await pool.query<RowDataPacket[]>("SELECT id, name AS title, description FROM collections ORDER BY id ASC");
+    const [pcRows] = await pool.query<RowDataPacket[]>("SELECT collection_id FROM photo_collections WHERE photo_id = ?", [rows[0].id]);
+    const [pcatRows] = await pool.query<RowDataPacket[]>("SELECT category_id FROM photo_categories WHERE photo_id = ?", [rows[0].id]);
+    const collectionIds = pcRows.map(r => r.collection_id as number);
+    const categoryIds = pcatRows.map(r => r.category_id as number);
+    if (rows[0].category_id && !categoryIds.includes(rows[0].category_id)) categoryIds.push(rows[0].category_id);
+
+    const { catRows, collRows, rawCollRows } = await formChoices(categoryIds, collectionIds);
     const [camRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM cameras ORDER BY id ASC");
     const [lensRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM lenses ORDER BY id ASC");
     const [countryRows] = await pool.query<RowDataPacket[]>("SELECT id, country, state FROM countries ORDER BY country ASC, state ASC");
 
     const collectionMap: Record<string, string> = {};
-    collRows.forEach(c => { collectionMap[c.title] = c.description || ""; });
+    rawCollRows.forEach(c => { collectionMap[c.title] = c.description || ""; });
 
-    const photo = mapDBPhotoToAdminPhoto(rows[0], collectionMap);
+    const photo: any = mapDBPhotoToAdminPhoto(rows[0], collectionMap);
+    photo.collection_ids = collectionIds;
+    photo.category_ids = categoryIds;
 
     res.render("photo-form", {
       nav: "photos",
@@ -385,8 +454,7 @@ const renderPhotoFormError = async (
   const photo = photoFromBody(req);
   photo.src = src || photo.src;
 
-  const [catRows] = await pool.query<RowDataPacket[]>("SELECT id, name AS title FROM categories ORDER BY id ASC");
-  const [collRows] = await pool.query<RowDataPacket[]>("SELECT id, name AS title, description FROM collections ORDER BY id ASC");
+  const { catRows, collRows } = await formChoices(photo.category_ids || [], photo.collection_ids || []);
   const [camRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM cameras ORDER BY id ASC");
   const [lensRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM lenses ORDER BY id ASC");
   const [countryRows] = await pool.query<RowDataPacket[]>("SELECT id, country, state FROM countries ORDER BY country ASC, state ASC");
@@ -408,10 +476,105 @@ const renderPhotoFormError = async (
   });
 };
 
+export type UploadedFile = { s3Key: string; photoUrl: string; variants: ImageVariantInfo | null };
+
+/** Puts the original in S3 and makes its resized WebP copies. */
+const uploadPhotoFile = async (file: { buffer: Buffer; originalname: string; mimetype: string }): Promise<UploadedFile> => {
+  const s3Key = `photos/${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+
+  await s3.send(new PutObjectCommand({
+    Bucket: process.env.AWS_S3_BUCKET_NAME,
+    Key: s3Key,
+    Body: file.buffer,
+    ContentType: file.mimetype,
+    CacheControl: IMMUTABLE_CACHE,
+  }));
+
+  const variants = await tryCreateImageVariants(file.buffer, s3Key);
+  const bucketName = process.env.AWS_S3_BUCKET_NAME || "";
+  const region = process.env.AWS_REGION || "us-east-1";
+  return { s3Key, photoUrl: `https://${bucketName}.s3.${region}.amazonaws.com/${s3Key}`, variants };
+};
+
+/** Removes an upload's original and resized copies, e.g. when saving the photo then fails. */
+const discardUploadedFile = async (file: UploadedFile) => {
+  if (!file.s3Key) return;
+  const keys = [file.s3Key];
+  const v = file.variants;
+  if (v?.variant_base) {
+    String(v.variant_widths || "").split(",").filter(Boolean).forEach(w => keys.push(`${v.variant_base}-${w}.webp`));
+  }
+  try {
+    await s3.send(new DeleteObjectsCommand({
+      Bucket: process.env.AWS_S3_BUCKET_NAME,
+      Delete: { Objects: keys.map(Key => ({ Key })), Quiet: true },
+    }));
+  } catch (error) {
+    console.error("Could not remove unused upload from S3:", keys, error);
+  }
+};
+
+const isDupEntry = (error: any): boolean => Boolean(error && (error.code === "ER_DUP_ENTRY" || error.errno === 1062));
+/** Which unique key a duplicate-entry error hit, e.g. "slug" or "uq_photos_drive_file_id". */
+const dupKey = (error: any): string => (String(error?.sqlMessage || "").match(/for key '(?:[^.']*\.)?([^']+)'/) || [])[1] || "";
+
+/**
+ * Inserts a photo from the add-photo form fields (used by Add photo and Bulk upload).
+ * An automatic slug is re-picked if another upload grabbed it meanwhile.
+ * driveFileId is set only by the server (Bulk upload), never read from the form.
+ */
+const insertPhotoFromBody = async (req: Pick<Request, "body">, file: UploadedFile, driveFileId: string | null = null): Promise<{ id: number; slug: string }> => {
+  const cap = String(req.body.cap || "").trim();
+  const requested = slugFromBody(req);
+  const title = (req.body.title || cap).trim();
+  const ref = (req.body.ref || "").trim();
+  const categoryIds = parseCategoryIds(req.body);
+  const category_id = categoryIds[0] ?? null;
+  const species = String(req.body.species || "").trim();
+  const scientificName = String(req.body.scientific_name || "").trim();
+  const collectionIds = parseCollectionIds(req.body);
+  const collection_id = collectionIds[0] ?? null;
+  const camera_id = req.body.camera_id ? parseInt(req.body.camera_id, 10) : null;
+  const lens_id = req.body.lens_id ? parseInt(req.body.lens_id, 10) : null;
+  const country_id = req.body.country_id ? parseInt(req.body.country_id, 10) : null;
+  const state = (req.body.state || "").trim();
+  const date = (req.body.date || "").trim();
+  const about = (req.body.about || "").trim();
+  const altNote = (req.body.altNote || "").trim();
+  const tags = normalizeTags(req.body.tags);
+  const alt = (req.body.alt || "").trim();
+  const l = req.body.l || "";
+  const t = req.body.t || "";
+  const w = req.body.w || "";
+  const h = req.body.h || "";
+  const live = req.body.live !== "draft";
+  const metadata = JSON.stringify(readMeta(req.body));
+  const { s3Key, photoUrl, variants } = file;
+
+  for (let attempt = 0; ; attempt++) {
+    const slug = requested.auto ? await uniqueSlug(requested.slug) : requested.slug;
+    try {
+      const [insertResult] = await pool.query<any>(
+        `INSERT INTO photos (
+          title, cap, slug, ref, url, s3_key, alt, category_id, collection_id, camera_id, lens_id, country_id, state, date, description, l, t, w, h, live, metadata, alt_note, tags,
+          species, scientific_name, drive_file_id,
+          variant_base, variant_widths, img_width, img_height, img_color
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [title, cap, slug, ref, photoUrl, s3Key, alt, category_id, collection_id, camera_id, lens_id, country_id, state, date, about, l, t, w, h, live, metadata, altNote, tags || null,
+          species || null, scientificName || null, driveFileId,
+          variants?.variant_base ?? null, variants?.variant_widths ?? null, variants?.img_width ?? null, variants?.img_height ?? null, variants?.img_color ?? null]
+      );
+      await savePhotoCollections(insertResult.insertId, collectionIds);
+      await savePhotoCategories(insertResult.insertId, categoryIds);
+      return { id: insertResult.insertId, slug };
+    } catch (error) {
+      if (!(requested.auto && isDupEntry(error) && dupKey(error) === "slug" && attempt < 3)) throw error;
+    }
+  }
+};
+
 const createPhoto = async (req: Request, res: Response) => {
-  let s3Key = "";
   let photoUrl = req.body.src || "";
-  let variants: ImageVariantInfo | null = null;
 
   try {
     // Checked before the S3 upload, so a rejected form leaves no stray file.
@@ -421,62 +584,22 @@ const createPhoto = async (req: Request, res: Response) => {
       return renderPhotoFormError(req, res, 400, "add", photoUrl, invalid);
     }
 
-    if (req.file) {
-      const file = req.file;
-      s3Key = `photos/${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+    const file: UploadedFile = req.file
+      ? await uploadPhotoFile(req.file)
+      : { s3Key: "", photoUrl, variants: null };
+    photoUrl = file.photoUrl;
 
-      const command = new PutObjectCommand({
-        Bucket: process.env.AWS_S3_BUCKET_NAME,
-        Key: s3Key,
-        Body: file.buffer,
-        ContentType: file.mimetype,
-        CacheControl: IMMUTABLE_CACHE,
-      });
-
-      await s3.send(command);
-
-      variants = await tryCreateImageVariants(file.buffer, s3Key);
-
-      const bucketName = process.env.AWS_S3_BUCKET_NAME || "";
-      const region = process.env.AWS_REGION || "us-east-1";
-      photoUrl = `https://${bucketName}.s3.${region}.amazonaws.com/${s3Key}`;
+    try {
+      await insertPhotoFromBody(req, file);
+    } catch (error) {
+      if (req.file) await discardUploadedFile(file);
+      throw error;
     }
-
-    const cap = String(req.body.cap || "").trim();
-    const requested = slugFromBody(req);
-    const slug = requested.auto ? await uniqueSlug(requested.slug) : requested.slug;
-    const title = (req.body.title || cap).trim();
-    const ref = (req.body.ref || "").trim();
-    const category_id = req.body.category_id ? parseInt(req.body.category_id, 10) : null;
-    const collection_id = req.body.collection_id ? parseInt(req.body.collection_id, 10) : null;
-    const camera_id = req.body.camera_id ? parseInt(req.body.camera_id, 10) : null;
-    const lens_id = req.body.lens_id ? parseInt(req.body.lens_id, 10) : null;
-    const country_id = req.body.country_id ? parseInt(req.body.country_id, 10) : null;
-    const state = (req.body.state || "").trim();
-    const date = (req.body.date || "").trim();
-    const about = (req.body.about || "").trim();
-    const altNote = (req.body.altNote || "").trim();
-    const alt = (req.body.alt || "").trim();
-    const l = req.body.l || "";
-    const t = req.body.t || "";
-    const w = req.body.w || "";
-    const h = req.body.h || "";
-    const live = req.body.live !== "draft";
-    const metadata = JSON.stringify(readMeta(req.body));
-
-    await pool.query(
-      `INSERT INTO photos (
-        title, cap, slug, ref, url, s3_key, alt, category_id, collection_id, camera_id, lens_id, country_id, state, date, description, l, t, w, h, live, metadata, alt_note,
-        variant_base, variant_widths, img_width, img_height, img_color
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [title, cap, slug, ref, photoUrl, s3Key, alt, category_id, collection_id, camera_id, lens_id, country_id, state, date, about, l, t, w, h, live, metadata, altNote,
-        variants?.variant_base ?? null, variants?.variant_widths ?? null, variants?.img_width ?? null, variants?.img_height ?? null, variants?.img_color ?? null]
-    );
 
     res.redirect("/admin/photos?flash=Photo+added");
   } catch (error: any) {
     console.error("Error creating photo:", error);
-    if (error && (error.code === "ER_DUP_ENTRY" || error.errno === 1062)) {
+    if (isDupEntry(error)) {
       return renderPhotoFormError(req, res, 409, "add", photoUrl,
         `A photo with slug "${slugify(req.body.slug || "")}" already exists. Please choose a different slug.`);
     }
@@ -541,8 +664,10 @@ const updatePhoto = async (req: Request, res: Response) => {
 
     const title = (req.body.title || cap).trim();
     const ref = (req.body.ref || "").trim();
-    const category_id = req.body.category_id ? parseInt(req.body.category_id, 10) : null;
-    const collection_id = req.body.collection_id ? parseInt(req.body.collection_id, 10) : null;
+    const categoryIds = parseCategoryIds(req.body);
+    const category_id = categoryIds[0] ?? null;
+    const collectionIds = parseCollectionIds(req.body);
+    const collection_id = collectionIds[0] ?? null;
     const camera_id = req.body.camera_id ? parseInt(req.body.camera_id, 10) : null;
     const lens_id = req.body.lens_id ? parseInt(req.body.lens_id, 10) : null;
     const country_id = req.body.country_id ? parseInt(req.body.country_id, 10) : null;
@@ -550,6 +675,7 @@ const updatePhoto = async (req: Request, res: Response) => {
     const date = (req.body.date || "").trim();
     const about = (req.body.about || "").trim();
     const altNote = (req.body.altNote || "").trim();
+    const tags = normalizeTags(req.body.tags);
     const alt = (req.body.alt || "").trim();
     const l = req.body.l || "";
     const t = req.body.t || "";
@@ -560,10 +686,13 @@ const updatePhoto = async (req: Request, res: Response) => {
 
     await pool.query(
       `UPDATE photos SET
-        title = ?, cap = ?, slug = ?, ref = ?, url = ?, s3_key = ?, alt = ?, category_id = ?, collection_id = ?, camera_id = ?, lens_id = ?, country_id = ?, state = ?, date = ?, description = ?, l = ?, t = ?, w = ?, h = ?, live = ?, metadata = ?
+        title = ?, cap = ?, slug = ?, ref = ?, url = ?, s3_key = ?, alt = ?, category_id = ?, collection_id = ?, camera_id = ?, lens_id = ?, country_id = ?, state = ?, date = ?, description = ?, l = ?, t = ?, w = ?, h = ?, live = ?, metadata = ?, tags = ?
       WHERE slug = ?`,
-      [title, cap, slug, ref, photoUrl, s3Key, alt, category_id, collection_id, camera_id, lens_id, country_id, state, date, about, l, t, w, h, live, metadata, targetSlug]
+      [title, cap, slug, ref, photoUrl, s3Key, alt, category_id, collection_id, camera_id, lens_id, country_id, state, date, about, l, t, w, h, live, metadata, tags || null, targetSlug]
     );
+
+    await savePhotoCollections(existing.id, collectionIds);
+    await savePhotoCategories(existing.id, categoryIds);
 
     // A new file replaces the old variants; a failed generation clears
     // them so the site falls back to the new original, not the old copies.
@@ -665,193 +794,11 @@ const getPhotoBySlugAPI = async (req: Request, res: Response) => {
   }
 };
 
-/** Accepts DD/MM/YY(YY) or YYYY-MM-DD and returns YYYY-MM-DD ("" if unparseable). */
-const normalizeDate = (raw: unknown): string => {
-  const v = String(raw ?? "").trim();
-  if (!v) return "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-  const m = v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/);
-  if (!m) return v;
-  const year = m[3].length === 2 ? `20${m[3]}` : m[3];
-  return `${year}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
-};
-
-const importPhotos = async (req: Request, res: Response) => {
-  if (!req.file || !req.file.buffer) {
-    return res.redirect("/admin/photos?error=Please+upload+a+CSV+file.");
-  }
-
-  const results: any[] = [];
-  Readable.from(req.file.buffer)
-    .pipe(csvParser())
-    .on('data', (data) => results.push(data))
-    .on('end', async () => {
-      let importedCount = 0;
-      let errorCount = 0;
-      const failedRows: any[] = [];
-      
-      try {
-        const [categories] = await pool.query<RowDataPacket[]>("SELECT id, name FROM categories");
-        const [collections] = await pool.query<RowDataPacket[]>("SELECT id, name FROM collections");
-        const [cameras] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM cameras");
-        const [lenses] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM lenses");
-        const [countries] = await pool.query<RowDataPacket[]>("SELECT id, country, state FROM countries");
-
-        const getByName = (arr: any[], name: string, field: string = 'name') => {
-          if (!name) return null;
-          const match = arr.find((item: any) => item[field].toLowerCase() === name.toLowerCase());
-          return match ? match.id : null;
-        };
-
-        const getCountryId = (country: string, state: string) => {
-          if (!country && !state) return null;
-          const match = countries.find((c: any) => 
-            (c.country || "").toLowerCase() === (country || "").toLowerCase() &&
-            (c.state || "").toLowerCase() === (state || "").toLowerCase()
-          );
-          return match ? match.id : null;
-        };
-
-        for (const row of results) {
-          try {
-            const title = String(row.Title || "").trim();
-            const imageUrl = String(row['Image Path'] || "").trim();
-            if (!title || !imageUrl) continue;
-
-            // Handle Google Drive links
-            let downloadUrl = imageUrl;
-            const driveMatch = imageUrl.match(/drive\.google\.com\/file\/d\/([^\/]+)/);
-            if (driveMatch) {
-              downloadUrl = `https://drive.google.com/uc?export=download&id=${driveMatch[1]}`;
-            }
-
-            // Download image
-            const imageResponse = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
-            const mimeType = String(imageResponse.headers['content-type'] || 'image/jpeg');
-            
-            if (mimeType.includes('text/html')) {
-              throw new Error("Google Drive returned a login/HTML page instead of an image. Ensure the link permissions are set to 'Anyone with the link can view'.");
-            }
-            
-            const imageBuffer = imageResponse.data;
-            
-            // Upload to S3
-            const s3Key = `photos/${Date.now()}-${slugify(title)}.jpg`;
-            const s3Bucket = process.env.AWS_S3_BUCKET_NAME || "";
-            await s3.send(new PutObjectCommand({
-              Bucket: s3Bucket,
-              Key: s3Key,
-              Body: imageBuffer,
-              ContentType: mimeType,
-              CacheControl: IMMUTABLE_CACHE,
-            }));
-
-            const variants = await tryCreateImageVariants(Buffer.from(imageBuffer), s3Key);
-
-            const requestedSlug = String(row.Slug || "").trim() || title;
-            const finalSlug = await uniqueSlug(slugify(requestedSlug));
-            
-            // Resolve IDs
-            const category_id = getByName(categories, row.Category);
-            const collection_id = getByName(collections, row.Collection);
-            const camera_id = await resolveGearId("cameras", row.Camera, cameras as any[]);
-            const lens_id = await resolveGearId("lenses", row.Lens, lenses as any[]);
-            const countryName = canonicalCountry(row.Country);
-            const stateName = canonicalState(row.State);
-            const country_id = getCountryId(countryName, stateName);
-
-            const meta: any[] = [];
-            if (row.Camera) meta.push({ key: "Camera", value: row.Camera });
-            if (row.Lens) meta.push({ key: "Lens", value: row.Lens });
-            if (row.Settings) meta.push({ key: "Settings", value: row.Settings });
-            if (row.Location) meta.push({ key: "Location", value: row.Location });
-            const metaJson = JSON.stringify(meta);
-
-            await pool.query(
-              `INSERT INTO photos (
-                title, cap, slug, ref, category_id, collection_id, camera_id, lens_id, country_id, 
-                state, date, description, alt_note, alt, s3_key, live, metadata, l, t, w, h,
-                variant_base, variant_widths, img_width, img_height, img_color
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [
-                title,
-                row['Hover Caption'] || title,
-                finalSlug,
-                row.Caption || "",
-                category_id,
-                collection_id,
-                camera_id,
-                lens_id,
-                country_id,
-                stateName,
-                normalizeDate(row.Date),
-                row.About || "",
-                row['Alt Note'] || "",
-                row['Alt Text'] || title,
-                s3Key,
-                1,
-                metaJson,
-                "0", "0", "0", "0",
-                variants?.variant_base ?? null,
-                variants?.variant_widths ?? null,
-                variants?.img_width ?? null,
-                variants?.img_height ?? null,
-                variants?.img_color ?? null
-              ]
-            );
-
-            importedCount++;
-          } catch (e: any) {
-            console.error("Error processing row:", e);
-            const istTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
-            failedRows.push({ time: istTime, row, error: e.message || String(e) });
-            errorCount++;
-          }
-        }
-
-        if (failedRows.length > 0) {
-          let allFailedRows = [];
-          if (fs.existsSync("failed_imports.json")) {
-            try {
-              const existingData = fs.readFileSync("failed_imports.json", "utf-8");
-              allFailedRows = JSON.parse(existingData);
-            } catch (e) {
-              console.error("Could not parse existing failed_imports.json");
-            }
-          }
-          allFailedRows = allFailedRows.concat(failedRows);
-          fs.writeFileSync("failed_imports.json", JSON.stringify(allFailedRows, null, 2));
-        }
-
-        res.redirect(`/admin/photos?flash=Imported+${importedCount}+photos` + (errorCount > 0 ? `+(Failed:+${errorCount},+check+failed_imports.json)` : ''));
-      } catch (err) {
-        console.error("Import error:", err);
-        res.redirect("/admin/photos?error=Error+processing+import.");
-      }
-    });
-};
-
-const getFailedImportsAPI = (req: Request, res: Response) => {
-  try {
-    if (fs.existsSync("failed_imports.json")) {
-      const data = fs.readFileSync("failed_imports.json", "utf-8");
-      res.setHeader("Content-Type", "application/json");
-      res.send(data);
-    } else {
-      res.json({ message: "No failed imports found." });
-    }
-  } catch (error) {
-    res.status(500).json({ error: "Failed to read file." });
-  }
-};
-
 export default {
   getPhotos,
   getNewPhotoForm,
   getEditPhotoForm,
   createPhoto,
-  importPhotos,
-  getFailedImportsAPI,
   updatePhoto,
   togglePhoto,
   deletePhoto,
@@ -859,3 +806,13 @@ export default {
   getPhotoBySlugAPI
 };
 
+// Shared with the Bulk upload controller.
+export {
+  slugify,
+  parseIds,
+  uploadPhotoFile,
+  discardUploadedFile,
+  insertPhotoFromBody,
+  isDupEntry,
+  dupKey,
+};

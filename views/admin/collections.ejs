@@ -46,14 +46,15 @@
             <tr class="bg-sand">
               <th class="th w-[30%]"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="title">Title <span class="text-amber"></span></button></th>
               <th class="th"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="description">Description <span class="text-amber"></span></button></th>
-              <th class="th w-[12%]"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="photos">Live <span class="text-amber"></span></button></th>
+              <th class="th w-[12%]"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="photos">Live photos <span class="text-amber"></span></button></th>
+              <th class="th w-[130px]">Status</th>
               <th class="th w-[140px] text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             <% if (collections.length === 0) { %>
               <tr>
-                <td colspan="4" class="td text-center py-8 text-mute">No collections found matching your criteria.</td>
+                <td colspan="5" class="td text-center py-8 text-mute">No collections found matching your criteria.</td>
               </tr>
             <% } %>
             <% collections.forEach(function (c, i) { %>
@@ -66,9 +67,18 @@
                 <td class="td truncate text-xs text-mute"><%= c.description || "-" %></td>
                 <td class="td text-xs text-mute"><%= count %></td>
                 <td class="td">
+                  <%# Unpublished collections are hidden from the site's menus and filters. %>
+                  <form method="post" action="/admin/collections/<%= c.id %>/toggle<%= typeof pagination !== 'undefined' ? '?page=' + pagination.currentPage : '' %><%= (typeof search !== 'undefined' && search) ? '&search=' + encodeURIComponent(search) : '' %>">
+                    <button type="submit" title="Click to <%= c.live ? 'unpublish' : 'publish' %>"
+                      class="rounded-full px-3 py-1 text-[11px] uppercase tracking-wider <%= c.live ? 'border border-pine bg-pine text-cream' : 'border border-line2 bg-white text-mute' %>">
+                      <%= c.live ? "Published" : "Unpublished" %>
+                    </button>
+                  </form>
+                </td>
+                <td class="td">
                   <div class="flex justify-end gap-1.5">
                     <button type="button"
-                            onclick="openEditCollectionModal(<%= c.id || i %>, '<%= (c.title || c.name).replace(/'/g, "\\'") %>', '<%= (c.description || '').replace(/'/g, "\\'").replace(/\n/g, "\\n") %>')"
+                            onclick="openEditCollectionModal(<%= c.id || i %>, '<%= (c.title || c.name).replace(/'/g, "\\'") %>', '<%= (c.description || '').replace(/'/g, "\\'").replace(/\n/g, "\\n") %>', <%= c.live ? 1 : 0 %>)"
                             class="rounded-full border border-line2 bg-white px-3 py-1.5 text-xs hover:bg-sand">
                       Edit
                     </button>
@@ -124,6 +134,19 @@
       <label class="label">Description
         <textarea class="field mt-1.5 resize-y" name="description" rows="3" placeholder="High altitude desert expeditions in Trans-Himalaya."></textarea>
       </label>
+      <div class="label">Status
+        <div class="mt-1.5 flex gap-2">
+          <label class="cursor-pointer">
+            <input type="radio" name="live" value="1" class="peer sr-only" checked>
+            <span class="block rounded-full border border-line2 bg-white px-4 py-2 text-[12px] font-medium uppercase tracking-wider text-mute peer-checked:border-pine peer-checked:bg-pine peer-checked:text-cream peer-focus-visible:ring-2 peer-focus-visible:ring-amber">Published</span>
+          </label>
+          <label class="cursor-pointer">
+            <input type="radio" name="live" value="0" class="peer sr-only">
+            <span class="block rounded-full border border-line2 bg-white px-4 py-2 text-[12px] font-medium uppercase tracking-wider text-mute peer-checked:border-pine peer-checked:bg-pine peer-checked:text-cream peer-focus-visible:ring-2 peer-focus-visible:ring-amber">Unpublished</span>
+          </label>
+        </div>
+        <span class="mt-1 block text-[11px]">Unpublished ones are hidden from the site's menus and filters.</span>
+      </div>
       <div class="flex gap-2 pt-0.5">
         <button class="rounded-full bg-amber px-4 py-2.5 text-[13px] font-semibold text-pine hover:bg-[#d79c4c]">Create collection</button>
         <button type="button" data-close-modal class="pill-light">Cancel</button>
@@ -149,6 +172,19 @@
       <label class="label">Description
         <textarea id="edit-collection-description" class="field mt-1.5 resize-y" name="description" rows="3" placeholder="Description of the collection."></textarea>
       </label>
+      <div class="label">Status
+        <div class="mt-1.5 flex gap-2">
+          <label class="cursor-pointer">
+            <input type="radio" name="live" value="1" id="edit-collection-live-1" class="peer sr-only" checked>
+            <span class="block rounded-full border border-line2 bg-white px-4 py-2 text-[12px] font-medium uppercase tracking-wider text-mute peer-checked:border-pine peer-checked:bg-pine peer-checked:text-cream peer-focus-visible:ring-2 peer-focus-visible:ring-amber">Published</span>
+          </label>
+          <label class="cursor-pointer">
+            <input type="radio" name="live" value="0" id="edit-collection-live-0" class="peer sr-only">
+            <span class="block rounded-full border border-line2 bg-white px-4 py-2 text-[12px] font-medium uppercase tracking-wider text-mute peer-checked:border-pine peer-checked:bg-pine peer-checked:text-cream peer-focus-visible:ring-2 peer-focus-visible:ring-amber">Unpublished</span>
+          </label>
+        </div>
+        <span class="mt-1 block text-[11px]">Unpublished ones are hidden from the site's menus and filters.</span>
+      </div>
       <div class="flex gap-2 pt-0.5">
         <button type="submit" class="rounded-full bg-amber px-4 py-2.5 text-[13px] font-semibold text-pine hover:bg-[#d79c4c]">Save changes</button>
         <button type="button" data-close-modal class="pill-light">Cancel</button>
@@ -158,7 +194,7 @@
 </div>
 
 <script>
-  function openEditCollectionModal(index, title, description) {
+  function openEditCollectionModal(index, title, description, live) {
     const form = document.getElementById("edit-collection-form");
     const titleInput = document.getElementById("edit-collection-title");
     const descInput = document.getElementById("edit-collection-description");
@@ -166,6 +202,7 @@
     if (form) form.action = "/admin/collections/" + index;
     if (titleInput) titleInput.value = title;
     if (descInput) descInput.value = description || "";
+    document.getElementById(live ? "edit-collection-live-1" : "edit-collection-live-0").checked = true;
 
     const modal = document.getElementById("edit-collection");
     if (modal) {

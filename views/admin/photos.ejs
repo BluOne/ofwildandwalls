@@ -25,16 +25,8 @@
                   <span
                     class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-mute">&#8981;</span>
                 </form>
-                <form action="/admin/photos/import" method="post" enctype="multipart/form-data"
-                  class="m-0 flex items-center gap-2">
-                  <a href="/admin/photos/import/template" class="pill-light text-mute hover:text-ink transition-colors"
-                    title="Download Template CSV">Download Template</a>
-                  <label class="cursor-pointer pill-light">
-                    <span>Import CSV</span>
-                    <input type="file" name="csv" accept=".csv" class="hidden" onchange="this.form.submit()">
-                  </label>
-                  <a href="/admin/photos/new" class="pill-dark">Add photo</a>
-                </form>
+                <a href="/admin/photos/bulk" class="pill-light">Bulk upload</a>
+                <a href="/admin/photos/new" class="pill-dark">Add photo</a>
               </div>
             </div>
 
