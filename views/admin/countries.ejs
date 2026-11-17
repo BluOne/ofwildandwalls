@@ -44,31 +44,34 @@
         <table class="w-full table-fixed border-collapse text-[13px]" data-table="countries">
           <thead>
             <tr class="bg-sand">
-              <th class="th w-[40%]"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="country">Country <span class="text-amber"></span></button></th>
+              <th class="th w-[28%]"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="country">Country <span class="text-amber"></span></button></th>
               <th class="th"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="state">State / Region <span class="text-amber"></span></button></th>
+              <th class="th"><button type="button" class="sort flex w-full items-center gap-1 text-[11px] uppercase tracking-[0.1em]" data-key="city">City <span class="text-amber"></span></button></th>
               <th class="th w-[140px] text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             <% if (countries.length === 0) { %>
               <tr>
-                <td colspan="3" class="td text-center py-8 text-mute">No countries found matching your criteria.</td>
+                <td colspan="4" class="td text-center py-8 text-mute">No countries found matching your criteria.</td>
               </tr>
             <% } %>
             <% countries.forEach(function (c, i) { %>
               <tr class="border-b border-[#f3ede4]"
                   data-country="<%= c.country %>"
-                  data-state="<%= c.state || '' %>">
+                  data-state="<%= c.state || '' %>"
+                  data-city="<%= c.city || '' %>">
                 <td class="td truncate font-semibold text-pine"><%= c.country %></td>
                 <td class="td truncate font-medium"><%= c.state || "-" %></td>
+                <td class="td truncate <%= c.city ? 'font-medium' : 'text-mute' %>"><%= c.city || "Whole state" %></td>
                 <td class="td">
                   <div class="flex justify-end gap-1.5">
                     <button type="button"
-                            onclick="openEditCountryModal(<%= c.id || i %>, '<%= (c.country || '').replace(/'/g, "\\'") %>', '<%= (c.state || '').replace(/'/g, "\\'") %>')"
+                            onclick="openEditCountryModal(<%= c.id || i %>, '<%= (c.country || '').replace(/'/g, "\\'") %>', '<%= (c.state || '').replace(/'/g, "\\'") %>', '<%= (c.city || '').replace(/'/g, "\\'") %>')"
                             class="rounded-full border border-line2 bg-white px-3 py-1.5 text-xs hover:bg-sand">
                       Edit
                     </button>
-                    <form method="post" action="/admin/countries/<%= c.id || i %>/delete<%= typeof pagination !== 'undefined' ? '?page=' + pagination.currentPage : '' %>" data-confirm="Delete <%= c.country %><%= c.state ? ' (' + c.state + ')' : '' %>?">
+                    <form method="post" action="/admin/countries/<%= c.id || i %>/delete<%= typeof pagination !== 'undefined' ? '?page=' + pagination.currentPage : '' %>" data-confirm="Delete <%= [c.city, c.state, c.country].filter(Boolean).join(', ') %>?">
                       <button type="submit" class="rounded-full border border-line2 bg-white px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 hover:border-red-200">Delete</button>
                     </form>
                   </div>
@@ -120,6 +123,9 @@
       <label class="label">State / Region <span class="text-red-500">*</span>
         <input class="field mt-1.5" name="state" placeholder="Rajasthan, California, Provence" required>
       </label>
+      <label class="label">City
+        <input class="field mt-1.5" name="city" placeholder="Udaipur, San Francisco (leave empty for the whole state)">
+      </label>
       <div class="flex gap-2 pt-0.5">
         <button class="rounded-full bg-amber px-4 py-2.5 text-[13px] font-semibold text-pine hover:bg-[#d79c4c]">Add country</button>
         <button type="button" data-close-modal class="pill-light">Cancel</button>
@@ -144,6 +150,9 @@
       <label class="label">State / Region <span class="text-red-500">*</span>
         <input id="edit-country-state" class="field mt-1.5" name="state" required>
       </label>
+      <label class="label">City
+        <input id="edit-country-city" class="field mt-1.5" name="city" placeholder="Leave empty for the whole state">
+      </label>
       <div class="flex gap-2 pt-0.5">
         <button type="submit" class="rounded-full bg-amber px-4 py-2.5 text-[13px] font-semibold text-pine hover:bg-[#d79c4c]">Save changes</button>
         <button type="button" data-close-modal class="pill-light">Cancel</button>
@@ -153,7 +162,7 @@
 </div>
 
 <script>
-  function openEditCountryModal(index, country, state) {
+  function openEditCountryModal(index, country, state, city) {
     const form = document.getElementById("edit-country-form");
     const countryInput = document.getElementById("edit-country-country");
     const stateInput = document.getElementById("edit-country-state");
@@ -161,6 +170,8 @@
     if (form) form.action = "/admin/countries/" + index;
     if (countryInput) countryInput.value = country;
     if (stateInput) stateInput.value = state || "";
+    const cityInput = document.getElementById("edit-country-city");
+    if (cityInput) cityInput.value = city || "";
 
     const modal = document.getElementById("edit-country");
     if (modal) {

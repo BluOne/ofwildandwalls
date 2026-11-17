@@ -380,7 +380,7 @@ const getNewPhotoForm = async (req: Request, res: Response) => {
     const { catRows, collRows } = await formChoices();
     const [camRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM cameras ORDER BY id ASC");
     const [lensRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM lenses ORDER BY id ASC");
-    const [countryRows] = await pool.query<RowDataPacket[]>("SELECT id, country, state FROM countries ORDER BY country ASC, state ASC");
+    const [countryRows] = await pool.query<RowDataPacket[]>("SELECT id, country, state, city FROM countries ORDER BY country ASC, state ASC, city IS NOT NULL, city ASC");
 
     res.render("photo-form", {
       nav: "add",
@@ -414,7 +414,7 @@ const getEditPhotoForm = async (req: Request, res: Response) => {
     const { catRows, collRows, rawCollRows } = await formChoices(categoryIds, collectionIds);
     const [camRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM cameras ORDER BY id ASC");
     const [lensRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM lenses ORDER BY id ASC");
-    const [countryRows] = await pool.query<RowDataPacket[]>("SELECT id, country, state FROM countries ORDER BY country ASC, state ASC");
+    const [countryRows] = await pool.query<RowDataPacket[]>("SELECT id, country, state, city FROM countries ORDER BY country ASC, state ASC, city IS NOT NULL, city ASC");
 
     const collectionMap: Record<string, string> = {};
     rawCollRows.forEach(c => { collectionMap[c.title] = c.description || ""; });
@@ -457,7 +457,7 @@ const renderPhotoFormError = async (
   const { catRows, collRows } = await formChoices(photo.category_ids || [], photo.collection_ids || []);
   const [camRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM cameras ORDER BY id ASC");
   const [lensRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM lenses ORDER BY id ASC");
-  const [countryRows] = await pool.query<RowDataPacket[]>("SELECT id, country, state FROM countries ORDER BY country ASC, state ASC");
+  const [countryRows] = await pool.query<RowDataPacket[]>("SELECT id, country, state, city FROM countries ORDER BY country ASC, state ASC, city IS NOT NULL, city ASC");
 
   return res.status(status).render("photo-form", {
     nav: mode === "add" ? "add" : "photos",

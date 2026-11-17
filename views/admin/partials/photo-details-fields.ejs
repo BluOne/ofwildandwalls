@@ -70,17 +70,43 @@
 <label class="label">Date
   <input class="field mt-1.5" type="date" name="date" value="<%= photo.date %>">
 </label>
+<%# Location is picked most-specific first: a city fills in its state and
+    country, a state fills in its country. Cities exist for India and the US. %>
+<%# City and State are search-as-you-type dropdowns (styled like the
+    Collections picker); the script at the bottom wires them up. %>
+<div class="label">
+  <label for="city-input">City</label>
+  <div class="relative mt-1.5" data-combo>
+    <input id="city-input" class="field pr-9" autocomplete="off" spellcheck="false"
+      role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="city-options"
+      placeholder="Search city — e.g. Kanha, San Francisco">
+    <button type="button" data-combo-clear aria-label="Clear city"
+      class="absolute right-2 top-1/2 hidden h-6 w-6 -translate-y-1/2 rounded-full text-[15px] leading-none text-mute hover:bg-sand hover:text-ink">&times;</button>
+    <div id="city-options" role="listbox" data-combo-list
+      class="absolute inset-x-0 top-full z-30 mt-1 hidden max-h-64 overflow-y-auto rounded-xl border border-line2 bg-white p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.12)]"></div>
+  </div>
+  <span class="mt-1 block text-[11px] font-normal normal-case tracking-normal text-mute">Optional. Leave empty for the whole state.</span>
+  <%# The saved location: the city's row if one is picked, else the state's. %>
+  <input type="hidden" id="country-id-hidden" name="country_id" value="<%= photo.country_id || '' %>">
+</div>
+<div class="label">
+  <label for="state-input">State / Region</label>
+  <div class="relative mt-1.5" data-combo>
+    <input id="state-input" class="field pr-9" autocomplete="off" spellcheck="false"
+      role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="state-options"
+      placeholder="Search state — e.g. Madhya Pradesh">
+    <button type="button" data-combo-clear aria-label="Clear state"
+      class="absolute right-2 top-1/2 hidden h-6 w-6 -translate-y-1/2 rounded-full text-[15px] leading-none text-mute hover:bg-sand hover:text-ink">&times;</button>
+    <div id="state-options" role="listbox" data-combo-list
+      class="absolute inset-x-0 top-full z-30 mt-1 hidden max-h-64 overflow-y-auto rounded-xl border border-line2 bg-white p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.12)]"></div>
+  </div>
+  <input type="hidden" id="state-hidden" name="state"
+    value="<%= photo.state || '' %>">
+</div>
 <label class="label">Country
   <select id="country-select" class="field mt-1.5">
     <option value="">Select country</option>
   </select>
-</label>
-<label class="label">State / Region
-  <select id="state-select" name="country_id" class="field mt-1.5">
-    <option value="">Select state</option>
-  </select>
-  <input type="hidden" id="state-hidden" name="state"
-    value="<%= photo.state || '' %>">
 </label>
 <label class="label">Location
   <input class="field mt-1.5" name="location" value="<%= photo.location || '' %>"
@@ -157,16 +183,26 @@
     const countries = dataEl && dataEl.getAttribute('data-countries') ? JSON.parse(dataEl.getAttribute('data-countries')) : [];
     const selectedAttr = dataEl ? dataEl.getAttribute('data-selected') : '';
     const selectedCountryId = selectedAttr ? Number(selectedAttr) : null;
+    const cityInput = document.getElementById('city-input');
+    const stateInput = document.getElementById('state-input');
     const countrySelect = document.getElementById('country-select');
-    const stateSelect = document.getElementById('state-select');
     const stateHidden = document.getElementById('state-hidden');
+    const idHidden = document.getElementById('country-id-hidden');
 
-    if (!countrySelect || !stateSelect || !stateHidden) return;
+    if (!cityInput || !stateInput || !countrySelect || !stateHidden || !idHidden) return;
 
-    function syncStateHidden() {
-      const opt = stateSelect.options[stateSelect.selectedIndex];
-      stateHidden.value = (opt && opt.value) ? opt.textContent : '';
-    }
+    // Rows: city set → a city; state set, no city → the whole state;
+    // neither → the whole country (a few small countries have no states).
+    const cityRows = countries.filter(c => c.city);
+    const stateRows = countries.filter(c => !c.city && c.state);
+    const countryRows = countries.filter(c => !c.city && !c.state);
+
+    // Labels are unique, so the text in a box maps back to one row.
+    const cityLabel = c => c.city + ', ' + c.state + ', ' + c.country;
+    const stateLabel = c => c.state + ', ' + c.country;
+
+    let city = null;   // picked city row
+    let state = null;  // picked state row
 
     const names = [...new Set(countries.map(c => c.country))].sort();
     names.forEach(function (name) {
@@ -176,33 +212,203 @@
       countrySelect.appendChild(opt);
     });
 
-    function populateStates(countryName, preselectId) {
-      stateSelect.innerHTML = '<option value="">Select state</option>';
-      countries
-        .filter(c => c.country === countryName)
-        .forEach(function (c) {
-          const opt = document.createElement('option');
-          opt.value = c.id;
-          opt.textContent = c.state;
-          if (preselectId && Number(preselectId) === Number(c.id)) opt.selected = true;
-          stateSelect.appendChild(opt);
+    const esc = t => String(t).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+    const MAX_SHOWN = 60;
+
+    /*
+     * Search-as-you-type dropdown on a text input. `rows()` gives the
+     * current candidates; `primary`/`secondary` are the two lines of each
+     * option; `label` is the text put in the box when one is picked.
+     */
+    function combo(input, opts) {
+      const wrap = input.closest('[data-combo]');
+      const list = wrap.querySelector('[data-combo-list]');
+      const clearBtn = wrap.querySelector('[data-combo-clear]');
+      let shown = [];
+      let active = -1;
+
+      function close() {
+        list.classList.add('hidden');
+        input.setAttribute('aria-expanded', 'false');
+        active = -1;
+      }
+
+      function highlight(i) {
+        const items = list.querySelectorAll('[data-i]');
+        items.forEach(el => el.classList.toggle('bg-cream', Number(el.dataset.i) === i));
+        active = i;
+        const el = list.querySelector('[data-i="' + i + '"]');
+        if (el) el.scrollIntoView({ block: 'nearest' });
+      }
+
+      function render() {
+        const q = input.value.trim().toLowerCase();
+        const all = opts.rows();
+        // Matches at the start of the name first, then anywhere in the label.
+        const starts = [], contains = [];
+        all.forEach(function (r) {
+          const p = opts.primary(r).toLowerCase();
+          if (!q || p.startsWith(q)) starts.push(r);
+          else if (opts.label(r).toLowerCase().includes(q)) contains.push(r);
         });
+        const matches = starts.concat(contains);
+        shown = matches.slice(0, MAX_SHOWN);
+
+        if (!all.length) {
+          list.innerHTML = '<p class="px-2.5 py-2 text-[12px] text-mute">' + esc(opts.emptyAll) + '</p>';
+        } else if (!shown.length) {
+          list.innerHTML = '<p class="px-2.5 py-2 text-[12px] text-mute">No match for “' + esc(input.value.trim()) + '”.</p>';
+        } else {
+          list.innerHTML = shown.map(function (r, i) {
+            const picked = opts.current() === r;
+            return '<div role="option" data-i="' + i + '" aria-selected="' + picked + '"' +
+              ' class="flex cursor-pointer items-baseline justify-between gap-3 rounded-lg px-2.5 py-2 text-[13px] hover:bg-cream">' +
+              '<span class="truncate ' + (picked ? 'font-semibold text-pine' : 'text-ink') + '">' + esc(opts.primary(r)) + '</span>' +
+              '<span class="shrink-0 truncate text-[11px] text-mute">' + esc(opts.secondary(r)) + '</span>' +
+              '</div>';
+          }).join('') +
+          (matches.length > shown.length
+            ? '<p class="px-2.5 pb-1 pt-1.5 text-[11px] text-mute">' + (matches.length - shown.length) + ' more — keep typing to narrow down.</p>'
+            : '');
+        }
+        list.classList.remove('hidden');
+        input.setAttribute('aria-expanded', 'true');
+        active = -1;
+      }
+
+      function pick(r) {
+        input.value = r ? opts.label(r) : '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        close();
+      }
+
+      input.addEventListener('focus', render);
+      input.addEventListener('click', render);
+      input.addEventListener('input', function (e) {
+        clearBtn.classList.toggle('hidden', !input.value);
+        // Our own pick() also fires input; only real typing reopens the list.
+        if (e.isTrusted) render();
+      });
+      input.addEventListener('keydown', function (e) {
+        const open = !list.classList.contains('hidden');
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (!open) return render();
+          if (!shown.length) return;
+          const step = e.key === 'ArrowDown' ? 1 : -1;
+          highlight((active + step + shown.length) % shown.length);
+        } else if (e.key === 'Enter') {
+          // Enter picks the highlighted (or only) option, never submits.
+          if (open) {
+            e.preventDefault();
+            const r = shown[active] || (shown.length === 1 ? shown[0] : null);
+            if (r) pick(r);
+          }
+        } else if (e.key === 'Escape') {
+          if (open) { e.preventDefault(); close(); }
+        } else if (e.key === 'Tab') {
+          close();
+        }
+      });
+      // mousedown, not click, so the input keeps focus until the pick lands.
+      list.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        const el = e.target.closest('[data-i]');
+        if (el) pick(shown[Number(el.dataset.i)]);
+      });
+      input.addEventListener('blur', close);
+      clearBtn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      clearBtn.addEventListener('click', function () {
+        pick(null);
+        input.focus();
+      });
+
+      return { refreshClear: () => clearBtn.classList.toggle('hidden', !input.value) };
     }
 
-    countrySelect.addEventListener('change', function () {
-      populateStates(countrySelect.value, null);
-      syncStateHidden();
+    // country_id = the city's row, else the state's, else a country-only row.
+    function sync() {
+      const countryRow = !state && countrySelect.value
+        ? countryRows.find(c => c.country === countrySelect.value)
+        : null;
+      idHidden.value = city ? city.id : state ? state.id : countryRow ? countryRow.id : '';
+      stateHidden.value = state ? state.state : '';
+      cityInput.setCustomValidity(cityInput.value.trim() && !city ? 'Pick a city from the list, or leave it empty.' : '');
+      stateInput.setCustomValidity(stateInput.value.trim() && !state ? 'Pick a state from the list.' : '');
+      cityCombo.refreshClear();
+      stateCombo.refreshClear();
+    }
+
+    function setState(row) {
+      state = row;
+      stateInput.value = row ? stateLabel(row) : '';
+      if (row) countrySelect.value = row.country;
+    }
+
+    // Suggestions narrow to whatever is already chosen further down.
+    const cityCombo = combo(cityInput, {
+      rows: () => cityRows.filter(c =>
+        state ? c.country === state.country && c.state === state.state
+              : !countrySelect.value || c.country === countrySelect.value),
+      primary: c => c.city,
+      secondary: c => c.state + ', ' + c.country,
+      label: cityLabel,
+      current: () => city,
+      emptyAll: 'No cities for this state yet — leave City empty.',
     });
 
-    stateSelect.addEventListener('change', syncStateHidden);
+    const stateCombo = combo(stateInput, {
+      rows: () => stateRows.filter(c => !countrySelect.value || c.country === countrySelect.value),
+      primary: c => c.state,
+      secondary: c => c.country,
+      label: stateLabel,
+      current: () => state,
+      emptyAll: 'No states for this country.',
+    });
 
-    if (selectedCountryId) {
-      const match = countries.find(c => Number(c.id) === selectedCountryId);
-      if (match) {
-        countrySelect.value = match.country;
-        populateStates(match.country, selectedCountryId);
-        syncStateHidden();
+    cityInput.addEventListener('input', function () {
+      const text = cityInput.value.trim();
+      city = cityRows.find(c => cityLabel(c) === text) || null;
+      // A city brings its state and country with it.
+      if (city) {
+        setState(stateRows.find(s => s.country === city.country && s.state === city.state) || null);
       }
+      sync();
+    });
+
+    stateInput.addEventListener('input', function () {
+      const text = stateInput.value.trim();
+      state = stateRows.find(s => stateLabel(s) === text) || null;
+      if (state) countrySelect.value = state.country;
+      // A city outside the chosen state no longer fits.
+      if (city && (!state || city.state !== state.state || city.country !== state.country)) {
+        city = null;
+        cityInput.value = '';
+      }
+      sync();
+    });
+
+    countrySelect.addEventListener('change', function () {
+      if (state && state.country !== countrySelect.value) {
+        setState(null);
+        city = null;
+        cityInput.value = '';
+      }
+      sync();
+    });
+
+    // Editing: fill in the saved location.
+    const saved = selectedCountryId ? countries.find(c => Number(c.id) === selectedCountryId) : null;
+    if (saved) {
+      if (saved.city) {
+        city = saved;
+        cityInput.value = cityLabel(saved);
+        setState(stateRows.find(s => s.country === saved.country && s.state === saved.state) || null);
+      } else if (saved.state) {
+        setState(saved);
+      }
+      countrySelect.value = saved.country;
     }
+    sync();
   })();
 </script>

@@ -67,7 +67,7 @@
               </div>
               <p class="border-t border-[#eee7dd] px-4 py-2.5 text-[11px] text-mute">
                 Tip: paste several lines into any text column to fill the rows below it. Enter moves down a row.
-                Category, collections, camera, lens and state / country come from the admin; add new ones there first.
+                Category, collections, camera, lens, city, state and country come from the admin; add new ones there first. Picking a city fills in its state and country.
               </p>
             </section>
           </main>
@@ -94,10 +94,23 @@
         collections: DATA.collections.map(function (c) { return { id: String(c.id), label: c.title }; }),
         camera: DATA.cameras.map(function (c) { return { id: String(c.id), label: c.brand ? c.brand + ' ' + c.model : c.model }; }),
         lens: DATA.lenses.map(function (l) { return { id: String(l.id), label: l.brand ? l.brand + ' ' + l.model : l.model }; }),
-        location: DATA.countries.map(function (c) {
-          return { id: String(c.id), label: c.state ? c.state + ', ' + c.country : c.country };
+        // Location is picked City → State → Country (see syncLocation). Each
+        // option carries its state/country so the lists can narrow per row.
+        city: DATA.countries.filter(function (c) { return c.city; }).map(function (c) {
+          return { id: String(c.id), label: c.city, sub: c.state + ', ' + c.country,
+            search: c.city + ', ' + c.state + ', ' + c.country, state: c.state, country: c.country };
+        }),
+        state: DATA.countries.filter(function (c) { return !c.city && c.state; }).map(function (c) {
+          return { id: String(c.id), label: c.state, sub: c.country,
+            search: c.state + ', ' + c.country, state: c.state, country: c.country };
+        }),
+        country: Array.from(new Set(DATA.countries.map(function (c) { return c.country; }))).sort().map(function (n) {
+          return { id: n, label: n };
         })
       };
+      // countries-table rows by id: the saved location (country_id) is one of them.
+      const LOC_ROW = {};
+      DATA.countries.forEach(function (c) { LOC_ROW[String(c.id)] = c; });
       const LABELS = {};
       Object.keys(OPTIONS).forEach(function (k) {
         LABELS[k] = {};
@@ -125,7 +138,9 @@
         { key: 'camera', label: 'Camera', width: 170, type: 'pick' },
         { key: 'lens', label: 'Lens', width: 170, type: 'pick' },
         { key: 'date', label: 'Date', width: 145, type: 'date' },
-        { key: 'location', label: 'State / Country', width: 190, type: 'pick' },
+        { key: 'city', label: 'City', width: 170, type: 'pick' },
+        { key: 'state', label: 'State / Region', width: 170, type: 'pick' },
+        { key: 'country', label: 'Country', width: 150, type: 'pick' },
         { key: 'place', label: 'Location', width: 180 },
         { key: 'settings', label: 'Settings', width: 170 },
         { key: 'description', label: 'About the photo', width: 250 },
@@ -328,6 +343,7 @@
           job: null
         };
         COLUMNS.forEach(function (c) { row.values[c.key] = c.multi ? [] : ''; });
+        row.values.location = ''; // the saved country_id, worked out from City/State/Country
         row.values.live = 'draft'; // 'draft' | 'live', chosen in the Status cell
         const tr = el('tr', 'border-b border-[#eee7dd] align-middle');
         row.tr = tr;
@@ -385,6 +401,7 @@
             else if (row.values[k] && !LABELS[k][row.values[k]]) row.values[k] = '';
             renderPicker(row, k);
           });
+          locationFromSaved(row);
           row.values.live = values.live === 'live' ? 'live' : 'draft';
           if (values.jobId) row.jobId = values.jobId;
           row.titleTyped = !!row.values.title.trim();
@@ -703,6 +720,75 @@
         clearDoneBtn.classList.toggle('hidden', !uploaded);
       }
 
+      // ---------- location: City → State → Country ----------
+      //
+      // Same rules as the Add photo form: a city fills in its state and
+      // country, a state fills in its country, and a choice that no longer
+      // fits (a city outside the state, a state in another country) is
+      // cleared. row.values.location — what is saved — is the city's row,
+      // else the state's, else a country-only row.
+
+      const LOC_KEYS = ['city', 'state', 'country'];
+
+      function stateRowId(country, state) {
+        const s = OPTIONS.state.find(function (o) { return o.country === country && o.state === state; });
+        return s ? s.id : '';
+      }
+
+      function syncLocation(row, changed) {
+        const v = row.values;
+        if (changed === 'city' && v.city) {
+          const c = LOC_ROW[v.city];
+          v.state = stateRowId(c.country, c.state);
+          v.country = c.country;
+        } else if (changed === 'state') {
+          if (!v.state) v.city = '';
+          else {
+            const s = LOC_ROW[v.state];
+            v.country = s.country;
+            const c = v.city && LOC_ROW[v.city];
+            if (c && (c.state !== s.state || c.country !== s.country)) v.city = '';
+          }
+        } else if (changed === 'country') {
+          if (!v.country || (v.state && LOC_ROW[v.state].country !== v.country)) { v.state = ''; v.city = ''; }
+        }
+        const countryOnly = !v.state && v.country
+          ? DATA.countries.find(function (c) { return !c.city && !c.state && c.country === v.country; })
+          : null;
+        v.location = v.city || v.state || (countryOnly ? String(countryOnly.id) : '');
+        LOC_KEYS.forEach(function (k) { clearCellError(row, k); renderPicker(row, k); });
+      }
+
+      // Restored rows only have the saved location: fill the three columns in.
+      function locationFromSaved(row) {
+        const v = row.values;
+        const r = LOC_ROW[v.location];
+        v.city = ''; v.state = ''; v.country = '';
+        if (!r) v.location = '';
+        else {
+          if (r.city) { v.city = String(r.id); v.state = stateRowId(r.country, r.state); }
+          else if (r.state) v.state = String(r.id);
+          v.country = r.country;
+        }
+        LOC_KEYS.forEach(function (k) { renderPicker(row, k); });
+      }
+
+      // The picker's options for this row: cities narrow to the row's state
+      // (or country), states to its country.
+      function optionsFor(key, row) {
+        const v = row.values;
+        if (key === 'city') {
+          const s = v.state && LOC_ROW[v.state];
+          return OPTIONS.city.filter(function (o) {
+            return s ? o.country === s.country && o.state === s.state : !v.country || o.country === v.country;
+          });
+        }
+        if (key === 'state') {
+          return OPTIONS.state.filter(function (o) { return !v.country || o.country === v.country; });
+        }
+        return OPTIONS[key];
+      }
+
       // ---------- dropdown picker ----------
 
       const picker = document.getElementById('bulk-picker');
@@ -715,7 +801,7 @@
       function openPicker(anchor, key, row) {
         pick = { anchor: anchor, key: key, row: row };
         pickerSearch.value = '';
-        pickerSearch.placeholder = 'Search ' + ({ category: 'categories', camera: 'cameras', lens: 'lenses', location: 'states / countries' }[key] || key) + '…';
+        pickerSearch.placeholder = 'Search ' + ({ category: 'categories', camera: 'cameras', lens: 'lenses', city: 'cities', state: 'states', country: 'countries' }[key] || key) + '…';
         const r = anchor.getBoundingClientRect();
         picker.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 300)) + 'px';
         picker.style.top = (r.bottom + 4) + 'px';
@@ -740,7 +826,15 @@
         const multi = SINGLE.indexOf(key) === -1;
         const q = pickerSearch.value.trim().toLowerCase();
         const selected = multi ? pick.row.values[key] : [pick.row.values[key]];
-        const all = OPTIONS[key].filter(function (o) { return !q || o.label.toLowerCase().indexOf(q) !== -1; });
+        // Names starting with the search come first, then other matches.
+        const source = optionsFor(key, pick.row);
+        const starts = [], contains = [];
+        source.forEach(function (o) {
+          const name = o.label.toLowerCase();
+          if (!q || name.indexOf(q) === 0) starts.push(o);
+          else if ((o.search || o.label).toLowerCase().indexOf(q) !== -1) contains.push(o);
+        });
+        const all = starts.concat(contains);
         // Locations run to thousands: list the first 100 matches.
         const shown = all.slice(0, 100);
         pickerList.innerHTML = '';
@@ -748,13 +842,16 @@
           const on = selected.indexOf(o.id) !== -1;
           const item = el('button', 'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-ink hover:bg-sand' + (on ? ' font-medium' : ''));
           item.type = 'button';
-          item.append(el('span', 'w-3 shrink-0 text-pine', on ? '✓' : ''), el('span', 'truncate', o.label));
+          item.append(el('span', 'w-3 shrink-0 text-pine', on ? '✓' : ''), el('span', 'min-w-0 flex-1 truncate', o.label));
+          if (o.sub) item.appendChild(el('span', 'max-w-[50%] shrink-0 truncate text-[11px] font-normal text-mute', o.sub));
           item.addEventListener('click', function () { choose(o.id); });
           pickerList.appendChild(item);
         });
         if (!shown.length) {
           pickerList.appendChild(el('p', 'px-2 py-1.5 text-[12px] text-mute',
-            OPTIONS[key].length ? 'No matches. New values are added in the admin first.' : 'None in the admin yet. Add them there first.'));
+            source.length ? 'No matches. New values are added in the admin first.'
+              : key === 'city' ? 'No cities here — leave City empty for the whole state.'
+              : 'None in the admin yet. Add them there first.'));
         }
         pickerNote.textContent = all.length > shown.length
           ? 'Showing 100 of ' + all.length + ', type to narrow'
@@ -767,6 +864,7 @@
         clearCellError(row, key);
         if (SINGLE.indexOf(key) !== -1) {
           row.values[key] = row.values[key] === id ? '' : id;
+          if (LOC_KEYS.indexOf(key) !== -1) syncLocation(row, key);
           renderPicker(row, key);
           renderRow(row);
           afterChange();
@@ -794,6 +892,7 @@
       pickerClear.addEventListener('click', function () {
         const row = pick.row;
         row.values[pick.key] = SINGLE.indexOf(pick.key) !== -1 ? '' : [];
+        if (LOC_KEYS.indexOf(pick.key) !== -1) syncLocation(row, pick.key);
         clearCellError(row, pick.key);
         renderPicker(row, pick.key);
         renderRow(row);
@@ -859,7 +958,7 @@
 
       // Field names in the server's errors -> grid columns.
       const FIELD_OF = { drive_url: 'link', title: 'title', slug: 'slug', date: 'date', category: 'category',
-        collections: 'collections', camera: 'camera', lens: 'lens', location: 'location' };
+        collections: 'collections', camera: 'camera', lens: 'lens', location: 'state' };
 
       function payloadOf(row) {
         const v = row.values;

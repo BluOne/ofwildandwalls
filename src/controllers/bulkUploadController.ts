@@ -55,7 +55,7 @@ const getBulkUploadPage = async (req: Request, res: Response) => {
     const [collRows] = await pool.query<RowDataPacket[]>("SELECT id, name AS title FROM collections WHERE live = 1 ORDER BY name ASC");
     const [camRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM cameras ORDER BY brand ASC, model ASC");
     const [lensRows] = await pool.query<RowDataPacket[]>("SELECT id, brand, model FROM lenses ORDER BY brand ASC, model ASC");
-    const [countryRows] = await pool.query<RowDataPacket[]>("SELECT id, country, state FROM countries ORDER BY country ASC, state ASC");
+    const [countryRows] = await pool.query<RowDataPacket[]>("SELECT id, country, state, city FROM countries ORDER BY country ASC, state ASC, city IS NOT NULL, city ASC");
 
     res.render("bulk-upload", {
       nav: "bulk",
