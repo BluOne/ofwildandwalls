@@ -233,7 +233,8 @@ const SELECT_SITE_PHOTOS = `
     len.brand AS len_brand,
     len.model AS len_model,
     co.country AS country_name,
-    co.state AS country_state
+    co.state AS country_state,
+    co.city AS country_city
   FROM photos p
   LEFT JOIN categories cat ON p.category_id = cat.id AND cat.live = 1
     AND NOT EXISTS (SELECT 1 FROM categories hp WHERE hp.name = cat.parent AND hp.live = 0)
@@ -401,7 +402,9 @@ const getPhotoDetail = async (req: Request, res: Response) => {
         dateLabel: formatMonthYear(r.date),
         // Display text for the detail panel, built here so the template
         // stays short (a code formatter once split a long one and broke it).
-        locationLabel: joinParts([gM("Location"), r.country_state || r.state, r.country_name], ", "),
+        // The picked city; photos saved before City existed fall back to the
+        // old free-text Location.
+        locationLabel: joinParts([r.country_city || gM("Location"), r.country_state || r.state, r.country_name], ", "),
         categoryLabel: joinParts([(catParent && catParent.trim().toLowerCase() !== "none") ? catParent : "", catName], " & "),
         location: gM("Location"),
         state: r.country_state || r.state || "",
@@ -606,7 +609,7 @@ const getPhotoBySlugAPI = async (req: Request, res: Response) => {
       lens: (d as any).len_model || getMeta("Lens"),
       date: d.date || "",
       dateLabel: formatMonthYear(d.date),
-      locationLabel: joinParts([getMeta("Location"), (d as any).country_state || d.state, (d as any).country_name], ", "),
+      locationLabel: joinParts([(d as any).country_city || getMeta("Location"), (d as any).country_state || d.state, (d as any).country_name], ", "),
       categoryLabel: joinParts([((d as any).cat_parent && String((d as any).cat_parent).trim().toLowerCase() !== "none") ? (d as any).cat_parent : "", (d as any).cat_name], " & "),
       location: getMeta("Location"),
       state: (d as any).country_state || d.state || "",

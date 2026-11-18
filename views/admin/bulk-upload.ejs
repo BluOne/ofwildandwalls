@@ -141,7 +141,6 @@
         { key: 'city', label: 'City', width: 170, type: 'pick' },
         { key: 'state', label: 'State / Region', width: 170, type: 'pick' },
         { key: 'country', label: 'Country', width: 150, type: 'pick' },
-        { key: 'place', label: 'Location', width: 180 },
         { key: 'settings', label: 'Settings', width: 170 },
         { key: 'description', label: 'About the photo', width: 250 },
         { key: 'tags', label: 'Tags', width: 200, placeholder: 'tiger, corbett' },
@@ -976,7 +975,7 @@
           lens_id: v.lens || null,
           date: v.date,
           country_id: v.location || null,
-          location: v.place.trim(),
+          location: '', // the free-text Location field is gone; City covers it
           settings: v.settings.trim(),
           description: v.description,
           tags: v.tags,

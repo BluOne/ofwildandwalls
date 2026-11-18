@@ -108,10 +108,6 @@
     <option value="">Select country</option>
   </select>
 </label>
-<label class="label">Location
-  <input class="field mt-1.5" name="location" value="<%= photo.location || '' %>"
-    placeholder="Spiti, Himachal Pradesh">
-</label>
 <label class="label col-span-2">Settings (Field Data)
   <input class="field mt-1.5" name="settings" value="<%= photo.settings || '' %>"
     placeholder="1/125 · f/11 · ISO 100">
@@ -197,8 +193,11 @@
     const stateRows = countries.filter(c => !c.city && c.state);
     const countryRows = countries.filter(c => !c.city && !c.state);
 
-    // Labels are unique, so the text in a box maps back to one row.
-    const cityLabel = c => c.city + ', ' + c.state + ', ' + c.country;
+    // The City box shows just the city; its state and country are in their
+    // own fields. The State box keeps "State, Country" (state names repeat
+    // across countries).
+    const cityLabel = c => c.city;
+    const cityFull = c => c.city + ', ' + c.state + ', ' + c.country;
     const stateLabel = c => c.state + ', ' + c.country;
 
     let city = null;   // picked city row
@@ -249,7 +248,7 @@
         all.forEach(function (r) {
           const p = opts.primary(r).toLowerCase();
           if (!q || p.startsWith(q)) starts.push(r);
-          else if (opts.label(r).toLowerCase().includes(q)) contains.push(r);
+          else if ((opts.search || opts.label)(r).toLowerCase().includes(q)) contains.push(r);
         });
         const matches = starts.concat(contains);
         shown = matches.slice(0, MAX_SHOWN);
@@ -276,18 +275,21 @@
         active = -1;
       }
 
+      // A pick hands over the row itself (city names repeat across states,
+      // so the text alone can't say which one was meant).
       function pick(r) {
         input.value = r ? opts.label(r) : '';
-        input.dispatchEvent(new Event('input', { bubbles: true }));
+        clearBtn.classList.toggle('hidden', !input.value);
+        opts.onPick(r);
         close();
       }
 
       input.addEventListener('focus', render);
       input.addEventListener('click', render);
-      input.addEventListener('input', function (e) {
+      input.addEventListener('input', function () {
         clearBtn.classList.toggle('hidden', !input.value);
-        // Our own pick() also fires input; only real typing reopens the list.
-        if (e.isTrusted) render();
+        opts.onType(input.value.trim());
+        render();
       });
       input.addEventListener('keydown', function (e) {
         const open = !list.classList.contains('hidden');
@@ -346,15 +348,27 @@
     }
 
     // Suggestions narrow to whatever is already chosen further down.
+    const cityCombo_rows = () => cityRows.filter(c =>
+      state ? c.country === state.country && c.state === state.state
+            : !countrySelect.value || c.country === countrySelect.value);
     const cityCombo = combo(cityInput, {
-      rows: () => cityRows.filter(c =>
-        state ? c.country === state.country && c.state === state.state
-              : !countrySelect.value || c.country === countrySelect.value),
+      rows: cityCombo_rows,
       primary: c => c.city,
       secondary: c => c.state + ', ' + c.country,
       label: cityLabel,
+      search: cityFull,
       current: () => city,
       emptyAll: 'No cities for this state yet — leave City empty.',
+      onPick: pickCity,
+      // Typed text counts only when it names exactly one city in the list.
+      onType: function (text) {
+        const t = text.toLowerCase();
+        const hits = t ? cityCombo_rows().filter(c => c.city.toLowerCase() === t) : [];
+        if (city && hits.indexOf(city) !== -1) return sync();
+        if (hits.length === 1) return pickCity(hits[0]);
+        city = null;
+        sync();
+      },
     });
 
     const stateCombo = combo(stateInput, {
@@ -364,29 +378,32 @@
       label: stateLabel,
       current: () => state,
       emptyAll: 'No states for this country.',
+      onPick: pickState,
+      onType: function (text) {
+        pickState(stateRows.find(s => stateLabel(s) === text) || null, true);
+      },
     });
 
-    cityInput.addEventListener('input', function () {
-      const text = cityInput.value.trim();
-      city = cityRows.find(c => cityLabel(c) === text) || null;
-      // A city brings its state and country with it.
-      if (city) {
-        setState(stateRows.find(s => s.country === city.country && s.state === city.state) || null);
+    // A city brings its state and country with it.
+    function pickCity(row) {
+      city = row;
+      if (row) {
+        setState(stateRows.find(s => s.country === row.country && s.state === row.state) || null);
       }
       sync();
-    });
+    }
 
-    stateInput.addEventListener('input', function () {
-      const text = stateInput.value.trim();
-      state = stateRows.find(s => stateLabel(s) === text) || null;
-      if (state) countrySelect.value = state.country;
+    function pickState(row, typed) {
+      state = row;
+      if (row) countrySelect.value = row.country;
+      if (!typed) stateInput.value = row ? stateLabel(row) : '';
       // A city outside the chosen state no longer fits.
       if (city && (!state || city.state !== state.state || city.country !== state.country)) {
         city = null;
         cityInput.value = '';
       }
       sync();
-    });
+    }
 
     countrySelect.addEventListener('change', function () {
       if (state && state.country !== countrySelect.value) {
