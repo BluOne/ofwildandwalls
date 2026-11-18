@@ -157,14 +157,39 @@
         const cols = document.getElementById('bulk-cols');
         const all = [{ label: '#', width: 40 }, { label: 'Preview', width: 64 }]
           .concat(COLUMNS, [{ label: 'Status', width: 250 }, { label: '', width: 40 }]);
-        let total = 0;
-        all.forEach(function (c) {
+        const table = document.getElementById('bulk-table');
+
+        // Columns can be widened/narrowed by dragging the edge of their header
+        // (double-click resets). Widths are remembered in this browser.
+        const WIDTHS_KEY = 'oww:bulk-col-widths';
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem(WIDTHS_KEY) || '{}') || {}; } catch (e) { saved = {}; }
+        const colEls = [];
+
+        function updateTableWidth() {
+          let total = 0;
+          colEls.forEach(function (c) { total += parseFloat(c.style.width) || 0; });
+          table.style.minWidth = total + 'px';
+        }
+
+        function saveWidths() {
+          const out = {};
+          all.forEach(function (c, i) {
+            const id = c.key || c.label;
+            const w = parseFloat(colEls[i].style.width);
+            if (id && w !== c.width) out[id] = w;
+          });
+          try { localStorage.setItem(WIDTHS_KEY, JSON.stringify(out)); } catch (e) {}
+        }
+
+        all.forEach(function (c, i) {
+          const id = c.key || c.label;
           const col = document.createElement('col');
-          col.style.width = c.width + 'px';
+          col.style.width = (saved[id] || c.width) + 'px';
           cols.appendChild(col);
-          total += c.width;
+          colEls.push(col);
           const th = document.createElement('th');
-          th.className = 'th !px-2' + (c.label === '#' ? ' text-center' : '');
+          th.className = 'th !px-2 relative' + (c.label === '#' ? ' text-center' : '');
           th.textContent = c.label;
           if (c.required) {
             const star = document.createElement('span');
@@ -172,9 +197,43 @@
             star.textContent = ' *';
             th.appendChild(star);
           }
+          // # , Preview and the × column keep their size.
+          if (id && id !== '#' && id !== 'Preview') {
+            const grip = document.createElement('span');
+            grip.className = 'absolute -right-1 top-0 z-10 h-full w-2.5 cursor-col-resize select-none ' +
+              'after:absolute after:left-1/2 after:top-1/4 after:h-1/2 after:w-px after:-translate-x-1/2 after:bg-line2 hover:after:w-0.5 hover:after:bg-amber';
+            grip.title = 'Drag to resize · double-click to reset';
+            grip.addEventListener('pointerdown', function (e) {
+              e.preventDefault();
+              grip.setPointerCapture(e.pointerId);
+              const startX = e.clientX;
+              const startW = parseFloat(col.style.width) || c.width;
+              document.body.style.cursor = 'col-resize';
+              function move(ev) {
+                col.style.width = Math.max(60, Math.min(1200, startW + ev.clientX - startX)) + 'px';
+                updateTableWidth();
+              }
+              function up() {
+                grip.removeEventListener('pointermove', move);
+                grip.removeEventListener('pointerup', up);
+                grip.removeEventListener('pointercancel', up);
+                document.body.style.cursor = '';
+                saveWidths();
+              }
+              grip.addEventListener('pointermove', move);
+              grip.addEventListener('pointerup', up);
+              grip.addEventListener('pointercancel', up);
+            });
+            grip.addEventListener('dblclick', function () {
+              col.style.width = c.width + 'px';
+              updateTableWidth();
+              saveWidths();
+            });
+            th.appendChild(grip);
+          }
           head.appendChild(th);
         });
-        document.getElementById('bulk-table').style.minWidth = total + 'px';
+        updateTableWidth();
       })();
       // Row: { tr, cells: {column: element}, values, check, status, cellErrors, jobId, job }
       //   check.state: 'empty' | 'checking' | 'ok' | 'error'
@@ -202,11 +261,6 @@
         const fromPath = url.pathname.match(/\/file\/d\/([A-Za-z0-9_-]{10,})/);
         const id = fromPath ? fromPath[1] : url.searchParams.get('id') || '';
         return /^[A-Za-z0-9_-]{10,}$/.test(id) ? id : '';
-      }
-
-      // "IMG_2041-tiger_walk.jpg" -> "IMG 2041 tiger walk"
-      function titleFromFilename(name) {
-        return String(name || '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
       }
 
       function isBlank(row) {
@@ -512,11 +566,8 @@
         row.check = data.ok
           ? { state: 'ok', link: job.link, fileId: data.fileId, filename: data.filename }
           : { state: 'error', link: job.link, fileId: data.fileId, message: data.error, duplicate: data.duplicate };
-        // A good link fills an empty title from the Drive file name.
-        if (data.ok && !row.titleTyped && !row.values.title.trim() && data.filename) {
-          setValue(row, 'title', titleFromFilename(data.filename));
-          onTextChange(row, 'title', false);
-        }
+        // The title is never filled from the Drive file name — the admin types
+        // it, and the slug follows what they type (see syncFromTitle).
         renderRow(row);
         afterChange();
       }
