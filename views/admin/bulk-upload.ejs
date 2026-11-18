@@ -137,7 +137,7 @@
         { key: 'collections', label: 'Collections', width: 190, type: 'pick', multi: true },
         { key: 'camera', label: 'Camera', width: 170, type: 'pick' },
         { key: 'lens', label: 'Lens', width: 170, type: 'pick' },
-        { key: 'date', label: 'Date', width: 145, type: 'date' },
+        { key: 'date', label: 'Date', width: 120, type: 'date', placeholder: 'dd/mm/yyyy' },
         { key: 'city', label: 'City', width: 170, type: 'pick' },
         { key: 'state', label: 'State / Region', width: 170, type: 'pick' },
         { key: 'country', label: 'Country', width: 150, type: 'pick' },
@@ -221,18 +221,31 @@
       }
 
       // DD/MM/YYYY (or DD-MM-YY) pasted into Date becomes YYYY-MM-DD.
+      // Dates are saved as yyyy-mm-dd (what the server expects) but typed,
+      // pasted and shown as dd/mm/yyyy, like the date picker was. Accepts
+      // 25/04/2026, 25-4-26, 25.04.2026 and 2026-04-25; '' if not a real date.
       function normalizeDate(raw) {
         const v = String(raw || '').trim();
-        if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-        const m = v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/);
-        if (!m) return '';
-        const year = m[3].length === 2 ? '20' + m[3] : m[3];
-        return year + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+        let y, mo, d;
+        let m = v.match(/^(\d{4})[\/.-](\d{1,2})[\/.-](\d{1,2})$/);
+        if (m) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+        else if ((m = v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/))) {
+          d = +m[1]; mo = +m[2]; y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+        } else return '';
+        const dt = new Date(Date.UTC(y, mo - 1, d));
+        if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return '';
+        return y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+      }
+
+      // yyyy-mm-dd → dd/mm/yyyy for the cell; anything else is shown as typed.
+      function displayDate(v) {
+        const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        return m ? m[3] + '/' + m[2] + '/' + m[1] : String(v || '');
       }
 
       function setValue(row, key, value) {
         row.values[key] = value;
-        row.cells[key].value = value;
+        row.cells[key].value = key === 'date' ? displayDate(value) : value;
       }
 
       // Slug and alt text follow the panel title until they're typed by hand.
@@ -266,18 +279,22 @@
       function textCell(row, col) {
         const key = col.key;
         const input = el('input', 'w-full rounded-md border border-transparent bg-transparent px-2 py-1.5 text-[12px] text-ink outline-none hover:border-line2 focus:border-amber focus:bg-white disabled:text-mute');
-        input.type = col.type === 'date' ? 'date' : 'text';
+        input.type = 'text'; // the Date cell too, so dates can be pasted
         input.placeholder = col.placeholder || '';
         input.autocomplete = 'off';
         input.spellcheck = ['link', 'slug', 'settings'].indexOf(key) === -1;
         input.addEventListener('input', function () {
-          row.values[key] = input.value;
+          // A date is kept as yyyy-mm-dd once it's a real one; until then the
+          // typed text is kept so validation can point at it.
+          row.values[key] = key === 'date' ? (normalizeDate(input.value) || input.value.trim()) : input.value;
           onTextChange(row, key, true);
           if (key === 'link') onLinkInput(row, false); else renderRow(row);
           afterChange();
         });
         input.addEventListener('blur', function () {
           if (key === 'link') onLinkInput(row, true);
+          // Tidy a valid date into dd/mm/yyyy.
+          if (key === 'date') input.value = displayDate(row.values.date);
           // A cleared slug goes back to following the title.
           if (key === 'slug') {
             const clean = slugify(input.value);
@@ -392,7 +409,7 @@
           Object.keys(row.values).forEach(function (k) {
             if (values[k] === undefined) return;
             row.values[k] = Array.isArray(row.values[k]) ? [].concat(values[k]).map(String) : String(values[k]);
-            if (TEXT_COLS.indexOf(k) !== -1) row.cells[k].value = row.values[k];
+            if (TEXT_COLS.indexOf(k) !== -1) row.cells[k].value = k === 'date' ? displayDate(row.values[k]) : row.values[k];
           });
           // Drop dropdown values that no longer exist in the admin.
           PICK_COLS.forEach(function (k) {
@@ -420,7 +437,7 @@
         lines.forEach(function (line) {
           while (rows[i] && !editable(rows[i])) i++; // skip uploaded rows
           const target = rows[i] || addRow();
-          setValue(target, key, key === 'date' ? normalizeDate(line) : key === 'slug' ? slugify(line) : line);
+          setValue(target, key, key === 'date' ? (normalizeDate(line) || line) : key === 'slug' ? slugify(line) : line);
           onTextChange(target, key, true);
           if (key === 'link') onLinkInput(target, true); else renderRow(target);
           i = rows.indexOf(target) + 1;
@@ -933,7 +950,7 @@
           if (!sl) row.cellErrors.slug = 'Slug is required.';
           // Slugs made from the title get -2, -3… on the server; a typed one must be unique.
           else if (row.slugTyped && slugRow[sl] && slugRow[sl] !== n) row.cellErrors.slug = 'Same slug as row ' + slugRow[sl] + '.';
-          if (row.values.date && !/^\d{4}-\d{2}-\d{2}$/.test(row.values.date)) row.cellErrors.date = 'Not a valid date.';
+          if (row.values.date && !/^\d{4}-\d{2}-\d{2}$/.test(row.values.date)) row.cellErrors.date = 'Not a valid date — use dd/mm/yyyy.';
           renderRow(row);
           const badKey = (linkProblem(row) || row.cellErrors.link) ? 'link'
             : COLUMNS.map(function (c) { return c.key; }).find(function (k) { return row.cellErrors[k]; });

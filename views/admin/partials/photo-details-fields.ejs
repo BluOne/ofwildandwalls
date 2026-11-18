@@ -68,7 +68,48 @@
   </select>
 </label>
 <label class="label">Date
-  <input class="field mt-1.5" type="date" name="date" value="<%= photo.date %>">
+  <%# Typed or pasted as dd/mm/yyyy; the hidden field posts yyyy-mm-dd as before. %>
+  <input id="date-input" class="field mt-1.5" type="text" inputmode="numeric" autocomplete="off"
+    placeholder="dd/mm/yyyy">
+  <input type="hidden" id="date-hidden" name="date" value="<%= photo.date || '' %>">
+  <script>
+    (function () {
+      const shown = document.getElementById('date-input');
+      const hidden = document.getElementById('date-hidden');
+      if (!shown || !hidden) return;
+
+      // 25/04/2026, 25-4-26, 25.04.2026 or 2026-04-25 → "2026-04-25"; '' if not a real date.
+      function toIso(raw) {
+        const v = String(raw || '').trim();
+        let y, mo, d, m;
+        if ((m = v.match(/^(\d{4})[\/.-](\d{1,2})[\/.-](\d{1,2})$/))) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+        else if ((m = v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/))) {
+          d = +m[1]; mo = +m[2]; y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+        } else return '';
+        const dt = new Date(Date.UTC(y, mo - 1, d));
+        if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return '';
+        return y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+      }
+      const toShown = iso => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '';
+
+      function sync() {
+        const text = shown.value.trim();
+        const iso = toIso(text);
+        hidden.value = iso;
+        shown.setCustomValidity(text && !iso ? 'Enter a real date as dd/mm/yyyy.' : '');
+      }
+
+      // Existing value (also older dd/mm/yy ones) shown as dd/mm/yyyy.
+      const saved = hidden.value.trim();
+      shown.value = toShown(toIso(saved)) || saved;
+      sync();
+
+      shown.addEventListener('input', sync);
+      shown.addEventListener('blur', function () {
+        if (hidden.value) shown.value = toShown(hidden.value);
+      });
+    })();
+  </script>
 </label>
 <%# Location is picked most-specific first: a city fills in its state and
     country, a state fills in its country. Cities exist for India and the US. %>
