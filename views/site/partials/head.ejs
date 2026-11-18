@@ -48,6 +48,11 @@
     .rail-in  { animation: railIn .6s cubic-bezier(.2,.7,.2,1) both; }
     .fade-up  { animation: fadeUp .7s cubic-bezier(.2,.7,.2,1) both; }
 
+    /* ── Transparent header: only its controls take clicks, so the Flow wall
+       underneath can still be dragged and its photos clicked through it. ── */
+    .site-header { pointer-events: none; }
+    .site-header a, .site-header button, .site-header #navPanel { pointer-events: auto; }
+
     /* ── Flow: endless drag canvas (#flowField). app.js lays photos out in one
        column width (native ratio, capped at 4:5 tall), shortest column first,
        repeating endlessly, and mounts only the tiles on screen. ── */
