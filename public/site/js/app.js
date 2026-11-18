@@ -19,6 +19,7 @@
 
   var FLOW_CAMERA_KEY = "oww:flow-camera";
   var GRID_SCROLL_KEY = "oww:grid-scroll";
+  var VIEW_KEY = "oww:view"; // last Flow/Grid tab, per browser tab
 
   if ("scrollRestoration" in history) {
     history.scrollRestoration = "manual";
@@ -187,7 +188,15 @@
     function switchView(view) {
       if (view === currentView()) return;
 
+      // Remember the tab for this browser tab, so reloading or coming back
+      // from a photo page opens the same view.
+      try {
+        sessionStorage.setItem(VIEW_KEY, view);
+      } catch (e) {}
+
       if (view === "grid") {
+        // Keep Flow's position, so switching back lands on the same spot.
+        if (saveFlowCamera) saveFlowCamera();
         flowSection.classList.add("hidden");
         gridSection.classList.remove("hidden");
 
@@ -222,6 +231,20 @@
         }
       });
     });
+
+    // Reopen the last tab. Waits for DOMContentLoaded so the Flow and Grid
+    // scripts further down (and their scroll-restore hooks) are set up.
+    var savedView = null;
+
+    try {
+      savedView = sessionStorage.getItem(VIEW_KEY);
+    } catch (e) {}
+
+    if (savedView === "grid") {
+      document.addEventListener("DOMContentLoaded", function () {
+        switchView("grid");
+      });
+    }
   })();
 
   /* ── Mobile / tablet filter bar ───────────────────────────────────── */
@@ -301,14 +324,18 @@
       '" data-count="' +
       (count || 0) +
       '"' +
-      ' class="oww-filter-item w-full flex items-center justify-between px-4 py-1.5 text-[15px] text-left' +
-      ' hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors">' +
-      "<span>" +
+      ' class="oww-filter-item w-full flex items-center justify-between gap-3 px-4 py-1.5 text-[15px] text-left' +
+      ' hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors" aria-pressed="false">' +
+      '<span class="oww-name min-w-0">' +
       esc(name) +
       "</span>" +
+      // Tick sits just before the count on the selected value (see markActiveItems).
+      '<span class="flex shrink-0 items-center gap-1.5">' +
+      '<svg class="oww-check w-3.5 h-3.5 invisible" viewBox="0 0 16 16" fill="none" stroke="currentColor"' +
+      ' stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"/></svg>' +
       '<span class="text-ink/35 dark:text-white/35">[' +
       (count || 0) +
-      "]</span>" +
+      "]</span></span>" +
       "</button>"
     );
   }
@@ -517,6 +544,7 @@
   // can re-run the same scroll restore it does on a full page load.
   var restoreFlowScroll = null;
   var restoreGridScroll = null;
+  var saveFlowCamera = null; // set by Flow; called when switching to Grid
 
   function applyFiltersAfterLoading() {
     var hasActive = Object.keys(activeFilters).some(function (k) {
@@ -799,6 +827,11 @@
   );
 
   function updateButtonLabel(type) {
+    markActiveItems(
+      document.getElementById(type === "collection" ? "collectionsMenu" : type + "Menu"),
+      type,
+    );
+
     var btnId = type === "collection" ? "collectionsBtn" : type + "Btn";
     var btn = document.getElementById(btnId);
 
@@ -907,6 +940,24 @@
     });
   }
 
+  // Ticks the menu item matching this type's active filter (and un-ticks
+  // the rest), so the open dropdown shows what is selected.
+  function markActiveItems(menuEl, filterType) {
+    if (!menuEl) return;
+
+    var active = (activeFilters[filterType] || "").toLowerCase();
+
+    menuEl.querySelectorAll(".oww-filter-item").forEach(function (btn) {
+      var on = !!active && (btn.getAttribute("data-name") || "").toLowerCase() === active;
+      var check = btn.querySelector(".oww-check");
+      var name = btn.querySelector(".oww-name");
+
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      if (check) check.classList.toggle("invisible", !on);
+      if (name) name.classList.toggle("font-semibold", on);
+    });
+  }
+
   // A filter restored from the URL on load has no count yet (the menu data
   // hasn't been fetched at that point) — once a menu finishes loading, look
   // up its currently active value among the freshly rendered items and fill
@@ -954,6 +1005,7 @@
 
         facetMenus[filterType] = function () {
           menuEl.innerHTML = renderFn(facetItems(filterType, items));
+          markActiveItems(menuEl, filterType);
         };
         facetMenus[filterType]();
 
@@ -3051,6 +3103,7 @@
     // Filters and the Flow/Grid switch call these (see applyFilters, switchView).
     flowRelayout = function () { rebuild(false); };
     restoreFlowScroll = function () { dirty = true; };
+    saveFlowCamera = saveCamera;
 
     rebuild(false);
     requestAnimationFrame(tick);
