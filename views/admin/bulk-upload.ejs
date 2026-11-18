@@ -57,6 +57,28 @@
                 </div>
               </div>
 
+              <%# #, Preview and Drive link stay put while the grid scrolls sideways.
+                  Their left offsets are the fixed widths of # (40px) and Preview
+                  (64px); resizing Drive link only changes its own width. %>
+              <style>
+                #bulk-table { border-collapse: separate; border-spacing: 0; }
+                #bulk-table > thead > tr > th:nth-child(-n+3),
+                #bulk-table > tbody > tr > td:nth-child(-n+3) { position: sticky; z-index: 2; background: #fff; }
+                /* Each header cell keeps its resize grip inside its own layer, so the
+                   grips of columns scrolled under the frozen ones don't poke through. */
+                #bulk-table > thead > tr > th { z-index: 1; }
+                #bulk-table > thead > tr > th:nth-child(-n+3) { z-index: 3; }
+                #bulk-table > thead > tr > th:nth-child(1), #bulk-table > tbody > tr > td:nth-child(1) { left: 0; }
+                #bulk-table > thead > tr > th:nth-child(2), #bulk-table > tbody > tr > td:nth-child(2) { left: 40px; }
+                #bulk-table > thead > tr > th:nth-child(3), #bulk-table > tbody > tr > td:nth-child(3) {
+                  left: 104px; box-shadow: 6px 0 8px -6px rgba(34,31,28,.18);
+                }
+                /* Uploaded rows are tinted; their frozen cells match. */
+                #bulk-table > tbody > tr[class*="bg-[#f6f9f6]"] > td:nth-child(-n+3) { background: #f6f9f6; }
+                /* separate borders: draw the row divider on the cells. */
+                #bulk-table > tbody > tr > td { border-bottom: 1px solid #eee7dd; }
+                #bulk-table > thead > tr > th { border-bottom: 1px solid #eee7dd; }
+              </style>
               <div class="overflow-x-auto" id="bulk-scroll">
                 <table id="bulk-table" class="w-full table-fixed border-collapse text-[12px]">
                   <%# Columns and header are built from COLUMNS in the script below. %>
@@ -143,7 +165,6 @@
         { key: 'country', label: 'Country', width: 150, type: 'pick' },
         { key: 'settings', label: 'Settings', width: 170 },
         { key: 'description', label: 'About the photo', width: 250 },
-        { key: 'tags', label: 'Tags', width: 200, placeholder: 'tiger, corbett' },
         { key: 'alt', label: 'Alt text', width: 170 }
       ];
       const TEXT_COLS = COLUMNS.filter(function (c) { return c.type !== 'pick'; }).map(function (c) { return c.key; });
@@ -1046,7 +1067,7 @@
           location: '', // the free-text Location field is gone; City covers it
           settings: v.settings.trim(),
           description: v.description,
-          tags: v.tags,
+          tags: '', // Tags column hidden; the site shows collections instead
           alt: v.alt.trim(),
           live: v.live
         };

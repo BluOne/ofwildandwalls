@@ -426,13 +426,31 @@ const getPhotoDetail = async (req: Request, res: Response) => {
       return p;
     };
 
+    // Every published collection each photo is in (a photo can be in several;
+    // photos.collection_id only holds the first). Shown as chips on the photo page.
+    const collectionsByPhoto: Record<number, string[]> = {};
+    const railIds = [...new Set([rows[0], ...allPhotoRows].map((r: any) => r.id))];
+    if (railIds.length) {
+      const [pcRows] = await pool.query<RowDataPacket[]>(
+        `SELECT pc.photo_id, col.name
+           FROM photo_collections pc
+           JOIN collections col ON col.id = pc.collection_id AND col.live = 1
+          WHERE pc.photo_id IN (?)
+          ORDER BY col.name ASC`,
+        [railIds]
+      );
+      pcRows.forEach(r => { (collectionsByPhoto[r.photo_id] ||= []).push(r.name); });
+    }
+    const collectionsOf = (r: any): string[] =>
+      collectionsByPhoto[r.id] || (r.col_name ? [r.col_name] : []);
+
     const photo = mapJoinedToSitePhoto(rows[0]);
     const photos = allPhotoRows.map(r => ({
       ...mapJoinedToSitePhoto(r),
-      details: buildDetailsFromJoined(r)
+      details: { ...buildDetailsFromJoined(r), collections: collectionsOf(r) }
     }));
     const cameras = buildCameraMenu(camRows, allPhotoRows);
-    const details = buildDetailsFromJoined(rows[0]);
+    const details = { ...buildDetailsFromJoined(rows[0]), collections: collectionsOf(rows[0]) };
 
     res.render("detail", {
       title: photo.cap,

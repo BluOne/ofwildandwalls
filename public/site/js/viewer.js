@@ -152,7 +152,8 @@
     var p = cur();
     var chips = String(p.settings || "").split(/\s*[·|,]\s*/).filter(Boolean);
     // "Sarus Crane | Antigone antigone" -> "Sarus Crane · Antigone antigone" (scientific name in italics).
-    var tags = String(p.tags || "").split(",").map(function (t) { return t.trim(); }).filter(Boolean);
+    // Every collection the photo is in, shown as chips (in place of tags).
+    var collections = (p.collections || []).filter(Boolean);
     var parts = String(p.ref || "").split("|").map(function (x) { return x.trim(); });
     var common = parts[0], sci = parts[1];
     var rows = [
@@ -162,8 +163,7 @@
       ["Lens", "lens", esc(p.lens)],
       ["Settings", "settings", chips.length ? '<div class="vchips">' + chips.map(function (c) { return "<span>" + esc(c) + "</span>"; }).join("") + "</div>" : ""],
       ["Category", "category", esc(p.category)],
-      ["Collection", "collection", esc(p.collection)],
-      ["Tags", "tags", tags.length ? '<div class="vchips">' + tags.map(function (t) { return "<span>" + esc(t) + "</span>"; }).join("") + "</div>" : ""]
+      ["Collections", "collection", collections.length ? '<div class="vchips">' + collections.map(function (c) { return "<span>" + esc(c) + "</span>"; }).join("") + "</div>" : ""]
     ].filter(function (r) { return r[2]; });
 
     vDet.innerHTML =

@@ -2677,8 +2677,16 @@
           w = h * r;
         }
 
+        // Shortest column; on a tie, the one nearest the middle. Photos come
+        // newest first and Flow opens on the middle columns, so the latest
+        // uploads fill the top of the screen you land on.
+        var mid = (C - 1) / 2;
         var c = 0;
-        for (k = 1; k < C; k++) if (cols[k].h < cols[c].h - 1) c = k;
+        for (k = 1; k < C; k++) {
+          var shorter = cols[k].h < cols[c].h - 1;
+          var tie = Math.abs(cols[k].h - cols[c].h) <= 1;
+          if (shorter || (tie && Math.abs(k - mid) < Math.abs(c - mid))) c = k;
+        }
 
         cols[c].items.push({ p: p, dx: Math.round((W - w) / 2), y: Math.round(cols[c].h), w: Math.round(w), h: Math.round(h) });
         cols[c].h += h + M.CAP + M.GY;
@@ -2699,7 +2707,10 @@
     }
 
     // Stable pseudo-random vertical shift for repeat b of column c.
+    // Block 0 (where Flow opens) isn't shifted, so its top row — the newest
+    // photos — starts at the top; the repeats around it are.
     function hashShift(b, c, period) {
+      if (b === 0) return 0;
       var v = Math.sin((b + 1) * 12.9898 + (c + 1) * 78.233) * 43758.5453;
       return Math.round((v - Math.floor(v)) * period);
     }

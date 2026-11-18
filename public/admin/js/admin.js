@@ -26,7 +26,9 @@
   if (search) search.addEventListener("input", filter);
 
   // ---- click-to-sort headers ----------------------------------------------
-  let sortKey = "date";
+  // No column sort to begin with: rows stay in the server's order (photos:
+  // last uploaded first). Clicking a header sorts by it.
+  let sortKey = "";
   let sortDir = "desc";
   const sortState = document.getElementById("sort-state");
 
@@ -68,7 +70,6 @@
       sortRows();
     });
   });
-  if (table && table.dataset.table === "photos") sortRows();
 
   // ---- dynamic metadata fields -------------------------------------------
   const meta = document.querySelector("[data-meta]");

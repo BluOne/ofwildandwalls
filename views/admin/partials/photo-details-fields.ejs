@@ -157,11 +157,9 @@
   <textarea class="field mt-1.5 resize-y" name="about" rows="3"
     placeholder="One or two lines about the moment."><%= photo.about %></textarea>
 </label>
-<label class="label col-span-2">Tags
-  <input class="field mt-1.5" name="tags" value="<%= photo.tags || '' %>"
-    placeholder="tiger, big cat, corbett, monsoon" autocomplete="off">
-  <span class="mt-1 block text-[11px]">Separate tags with commas.</span>
-</label>
+<%# Tags are hidden from the form (the site shows collections instead); a
+    photo's existing tags are kept as they are when it's saved. %>
+<input type="hidden" name="tags" value="<%= photo.tags || '' %>">
 <script>
   document.querySelectorAll('[data-multi-picker]').forEach(function (root) {
     const search = root.querySelector('[data-pick-search]');
