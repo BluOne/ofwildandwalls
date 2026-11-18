@@ -53,6 +53,44 @@
     .site-header { pointer-events: none; }
     .site-header a, .site-header button, .site-header #navPanel { pointer-events: auto; }
 
+    /* Header controls sit on frosted chips so they stay readable over photos:
+       round chips (Instagram, theme) and the Flow / Grid segmented toggle. */
+    /* Soft fade from the page colour behind the header, so photos passing
+       under it wash out (as in the design) instead of clashing with the logo. */
+    .site-header::before {
+      content: ""; position: absolute; inset: 0 0 -48px 0; z-index: -1; pointer-events: none;
+      background: linear-gradient(to bottom, rgba(255,255,255,.92) 0%, rgba(255,255,255,.6) 55%, rgba(255,255,255,0) 100%);
+    }
+    .dark .site-header::before {
+      background: linear-gradient(to bottom, rgba(13,13,13,.92) 0%, rgba(13,13,13,.6) 55%, rgba(13,13,13,0) 100%);
+    }
+
+    .hdr-chip, .hdr-seg {
+      background: rgba(238,238,238,.88);
+      -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+    }
+    .dark .hdr-chip, .dark .hdr-seg { background: rgba(38,38,38,.82); }
+    .hdr-chip {
+      display: flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 9999px;
+      color: rgba(20,20,20,.8); transition: color .2s, background-color .2s;
+    }
+    .hdr-chip:hover { color: #141414; background: rgba(228,228,228,.95); }
+    .dark .hdr-chip { color: rgba(255,255,255,.8); }
+    .dark .hdr-chip:hover { color: #fff; background: rgba(52,52,52,.92); }
+    .hdr-seg { display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 9999px; }
+    .hdr-seg-btn {
+      height: 36px; padding: 0 18px; border-radius: 9999px;
+      font-size: 15px; line-height: 36px; color: rgba(20,20,20,.6);
+      transition: color .2s, background-color .2s, box-shadow .2s;
+    }
+    .hdr-seg-btn:hover { color: #141414; }
+    /* Light: white pill on the grey track. Dark: near-black pill. */
+    .hdr-seg-btn.is-active { background: #fff; color: #141414; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .dark .hdr-seg-btn { color: rgba(255,255,255,.62); }
+    .dark .hdr-seg-btn:hover { color: #fff; }
+    .dark .hdr-seg-btn.is-active { background: #0b0b0b; color: #fff; box-shadow: none; }
+
     /* ── Flow: endless drag canvas (#flowField). app.js lays photos out in one
        column width (native ratio, capped at 4:5 tall), shortest column first,
        repeating endlessly, and mounts only the tiles on screen. ── */

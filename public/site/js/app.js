@@ -170,13 +170,9 @@
           btn.classList.toggle("text-ink/55", !isActive);
           btn.classList.toggle("dark:text-white/55", !isActive);
         } else {
-          btn.classList.toggle("text-[15px]", true);
-          btn.classList.toggle("font-medium", isActive);
-          btn.classList.toggle("text-ink/40", !isActive);
-          btn.classList.toggle("dark:text-white/40", !isActive);
-          btn.classList.toggle("hover:text-ink/70", !isActive);
-          btn.classList.toggle("dark:hover:text-white/70", !isActive);
-          btn.classList.toggle("transition-colors", !isActive);
+          // Desktop segmented toggle — styled by .hdr-seg-btn.is-active in head.ejs.
+          btn.classList.toggle("is-active", isActive);
+          btn.setAttribute("aria-pressed", isActive ? "true" : "false");
         }
       });
     }
@@ -2439,10 +2435,13 @@
     var revealTimer = null;
 
     function showGrid() {
+      // Only photos with no stored size can shift the row when they arrive —
+      // the rest already reserve their width (width/height attributes) and
+      // fade in on their own, so the strip shows straight away for them.
       var pending = Array.prototype.slice
         .call(track.querySelectorAll("img"))
         .filter(function (img) {
-          return !img.complete;
+          return !img.complete && !(img.getAttribute("width") && img.getAttribute("height"));
         });
 
       if (!pending.length) {
@@ -2527,6 +2526,31 @@
 
     gridLoadAll = loadAllRemaining;
     restoreGridScroll = showGrid;
+
+    // Grid is hidden while Flow is open, and lazy images in a hidden section
+    // never start downloading — so switching tabs began every download from
+    // scratch. Once the page has settled, fetch Grid's photos in the
+    // background (low priority) so they're ready when Grid opens.
+    function warmGridImages() {
+      if (!gridSectionEl || !gridSectionEl.classList.contains("hidden")) return;
+
+      var c = navigator.connection;
+      if (c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || ""))) return;
+
+      // One copy is enough: the looping copies share the same image URLs.
+      var firstCopy = copies[0] || track;
+
+      firstCopy.querySelectorAll("img[loading='lazy']").forEach(function (img) {
+        if ("fetchPriority" in img) img.fetchPriority = "low";
+        img.loading = "eager";
+      });
+    }
+
+    var gridSectionEl = document.getElementById("gridView");
+
+    window.addEventListener("load", function () {
+      setTimeout(warmGridImages, 1500);
+    });
 
     strip.addEventListener("scroll", function () {
       saveGridScrollPosition(strip);
