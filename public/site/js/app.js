@@ -859,7 +859,6 @@
     }
 
     if (active) {
-      var short = active.length > 16 ? active.substring(0, 14) + "…" : active;
 
       var count = activeFilterCounts[type];
 
@@ -877,8 +876,8 @@
       // highlighted pill ("Category  Echoes of Time"). Counts stay in the menu.
       btn.title = defaultLabels[type] + ": " + active + (countHtml ? " (" + count + ")" : "");
       labelEl.innerHTML =
-        defaultLabels[type] +
-        ' <span class="ml-1.5 font-medium text-ink dark:text-white">' + esc(short) + "</span>";
+        '<span class="oww-type">' + defaultLabels[type] + "</span>" +
+        '<span class="oww-val font-medium text-ink dark:text-white">' + esc(active) + "</span>";
 
       btn.classList.add("text-ink", "dark:text-white", "bg-black/[0.05]", "dark:bg-white/[0.08]");
       btn.classList.remove(
@@ -897,27 +896,41 @@
     fitFilterBar();
   }
 
-  // From md up the filters are one row. If active filters make that row
-  // wider than the screen, fold it back into the "Filters" button + panel
-  // (see #filterBar.oww-compact in head.ejs); unfold again once it fits.
+  // From md (768px) up the filters always stay one row. When several are
+  // selected and the row would be wider than the screen, the selected values
+  // are shortened with "…" (a shared max width, stepped down until it fits).
+  // Values are only trimmed a little while the type words ("Category") show;
+  // then the type words go (the icons still say which filter it is) so the
+  // values can stay readable. Below md the phone "Filters" button is used.
+  var STEPS = [
+    { tight: false, widths: [150, 120, 100] },
+    { tight: true, widths: [170, 150, 120, 100, 84, 70, 58, 46, 38] },
+  ];
+
   function fitFilterBar() {
     var bar = document.getElementById("filterBar");
     var group = document.getElementById("filtersGroup");
 
     if (!bar || !group) return;
 
-    // Measure the row as it would be laid out, then decide. Both happen in
-    // the same frame, so nothing flickers.
-    var wasCompact = bar.classList.contains("oww-compact");
-    bar.classList.remove("oww-compact");
+    bar.classList.remove("oww-compact", "oww-tight");
+    bar.style.removeProperty("--oww-val-max");
 
-    var isRow = window.matchMedia("(min-width: 768px)").matches;
-    var tooWide = isRow && group.scrollWidth > window.innerWidth - 32;
+    if (!window.matchMedia("(min-width: 768px)").matches) return;
 
-    bar.classList.toggle("oww-compact", tooWide);
+    var room = window.innerWidth - 32;
+    var fits = function () { return group.scrollWidth <= room; };
 
-    // Leaving compact mode: close the panel so it doesn't linger open.
-    if (wasCompact && !tooWide && isRow) group.classList.add("hidden");
+    if (fits()) return;
+
+    // Measure and adjust in one go (same frame), so nothing flickers.
+    for (var p = 0; p < STEPS.length; p++) {
+      bar.classList.toggle("oww-tight", STEPS[p].tight);
+      for (var i = 0; i < STEPS[p].widths.length; i++) {
+        bar.style.setProperty("--oww-val-max", STEPS[p].widths[i] + "px");
+        if (fits()) return;
+      }
+    }
   }
 
   window.addEventListener("resize", fitFilterBar);

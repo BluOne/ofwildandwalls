@@ -65,6 +65,20 @@
     #filterBar.oww-compact #resetDivider { display: none !important; }
     #filterBar.oww-compact .oww-dropdown { bottom: calc(100% + 8px) !important; }
 
+    /* ── Selected filter value in the bar ("Category  Echoes of Time"): long
+       values end in "…". app.js narrows --oww-val-max when several filters
+       would make the one-row bar wider than the screen, and adds .oww-tight
+       (drop the type words) only if that still isn't enough. ── */
+    #filterBar .oww-val {
+      display: inline-block; vertical-align: bottom; margin-left: .375rem;
+      max-width: var(--oww-val-max, 170px);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #filterBar.oww-tight .oww-type { display: none; }
+    #filterBar.oww-tight .oww-val { margin-left: 0; }
+    /* Tight: the buttons give up some side padding too. */
+    #filterBar.oww-tight #filtersGroup button[id$="Btn"] { padding-left: 9px !important; padding-right: 9px !important; }
+
     /* ── Transparent header: only its controls take clicks, so the Flow wall
        underneath can still be dragged and its photos clicked through it. ── */
     .site-header { pointer-events: none; }
