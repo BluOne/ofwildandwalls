@@ -855,21 +855,21 @@
           "]</span>"
           : "";
 
-      // On the one-row bar (xl) the type word is dropped while a value is
+      // On the one-row bar (md up) the type word is dropped while a value is
       // set — the icon identifies it — so several active filters still fit;
-      // it returns on 2xl screens and in the stacked phone/tablet panel.
+      // it returns on 2xl screens and in the stacked panel (.oww-type).
       btn.title = defaultLabels[type] + ": " + active;
       labelEl.innerHTML =
-        '<span class="xl:hidden 2xl:inline">' + defaultLabels[type] + "</span>" +
-        ' <span class="ml-1.5 xl:ml-0 2xl:ml-1.5 px-2 py-0.5 rounded-[6px] bg-black/5 dark:bg-white/10 text-[13px] text-ink dark:text-white font-medium">' +
+        '<span class="oww-type md:hidden 2xl:inline">' + defaultLabels[type] + "</span>" +
+        ' <span class="ml-1.5 md:ml-0 2xl:ml-1.5 px-2 py-0.5 rounded-[6px] bg-black/5 dark:bg-white/10 text-[13px] text-ink dark:text-white font-medium">' +
         esc(short) +
         countHtml +
         "</span>";
 
       btn.classList.add("text-ink", "dark:text-white");
       btn.classList.remove(
-        "text-ink/75",
-        "dark:text-white/75",
+        "text-ink/85",
+        "dark:text-white/85",
         "text-[#c8a03c]",
       );
     } else {
@@ -877,9 +877,37 @@
       labelEl.textContent = defaultLabels[type];
 
       btn.classList.remove("text-ink", "dark:text-white", "text-[#c8a03c]");
-      btn.classList.add("text-ink/75", "dark:text-white/75");
+      btn.classList.add("text-ink/85", "dark:text-white/85");
     }
+
+    fitFilterBar();
   }
+
+  // From md up the filters are one row. If active filters make that row
+  // wider than the screen, fold it back into the "Filters" button + panel
+  // (see #filterBar.oww-compact in head.ejs); unfold again once it fits.
+  function fitFilterBar() {
+    var bar = document.getElementById("filterBar");
+    var group = document.getElementById("filtersGroup");
+
+    if (!bar || !group) return;
+
+    // Measure the row as it would be laid out, then decide. Both happen in
+    // the same frame, so nothing flickers.
+    var wasCompact = bar.classList.contains("oww-compact");
+    bar.classList.remove("oww-compact");
+
+    var isRow = window.matchMedia("(min-width: 768px)").matches;
+    var tooWide = isRow && group.scrollWidth > window.innerWidth - 32;
+
+    bar.classList.toggle("oww-compact", tooWide);
+
+    // Leaving compact mode: close the panel so it doesn't linger open.
+    if (wasCompact && !tooWide && isRow) group.classList.add("hidden");
+  }
+
+  window.addEventListener("resize", fitFilterBar);
+  document.addEventListener("DOMContentLoaded", fitFilterBar);
 
   /* ── Generic popup wiring ─────────────────────────────────────────── */
 
@@ -2168,17 +2196,12 @@
 
     cursor.className = "photo-plus-cursor";
     cursor.setAttribute("aria-hidden", "true");
+    // A thin, unbroken white ring with a "+" in the middle (as in the design).
     cursor.innerHTML =
       '<svg class="photo-plus-ring" viewBox="0 0 68 68" fill="none">' +
-      '<circle cx="34" cy="34" r="32" fill="rgba(255,255,255,0.055)"></circle>' +
-      '<g stroke="rgba(255,255,255,0.75)" stroke-width="1.2" stroke-linecap="round">' +
-      '<path d="M 22 3.5 A 30.5 30.5 0 0 1 46 3.5"></path>' +
-      '<path d="M 64.5 22 A 30.5 30.5 0 0 1 64.5 46"></path>' +
-      '<path d="M 46 64.5 A 30.5 30.5 0 0 1 22 64.5"></path>' +
-      '<path d="M 3.5 46 A 30.5 30.5 0 0 1 3.5 22"></path>' +
-      "</g>" +
+      '<circle cx="34" cy="34" r="32.5" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.92)" stroke-width="1.5"></circle>' +
       "</svg>" +
-      '<svg class="photo-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">' +
+      '<svg class="photo-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">' +
       '<path d="M12 5v14M5 12h14"></path>' +
       "</svg>";
 
