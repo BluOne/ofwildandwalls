@@ -101,7 +101,11 @@
              overscroll-behavior: none; touch-action: pan-x;
              -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
              mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
-    .vtrack { flex-direction: row; align-items: flex-end; gap: 8px; height: 100%; box-sizing: border-box; padding: 0 50vw 10px; }
+    /* width: max-content so the right-hand 50vw padding counts towards the scroll
+       range — otherwise with only a few photos the strip could barely scroll and
+       the last thumbs never reached the centre. */
+    .vtrack { flex-direction: row; align-items: flex-end; gap: 8px; height: 100%; box-sizing: border-box; padding: 0 50vw 10px;
+              width: max-content; min-width: 100%; }
     .vrail button { width: auto; height: 54px; }
     .vrail img { height: 100%; width: auto; }
     .vpanel { top: auto; left: 8px; right: 8px; bottom: 72px; width: auto; max-height: none; height: calc(62vh - 72px);
