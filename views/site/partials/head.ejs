@@ -74,6 +74,32 @@
       max-width: var(--oww-val-max, 170px);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
+    /* Phone panel: tapping a filter opens its options inline, right under
+       that row, in a scrolling inner card (instead of a pop-up above). The
+       panel itself scrolls if it gets taller than the screen. */
+    @media (max-width: 767.98px) {
+      #filtersGroup:not(.hidden) {
+        max-height: calc(100dvh - 120px); overflow-y: auto; overscroll-behavior: contain;
+      }
+      #filtersGroup > div.relative { display: flex; flex-direction: column; }
+      #filtersGroup .oww-dropdown {
+        position: static !important; order: 2; transform: none !important;
+        width: auto !important; margin: 6px 0 4px; box-shadow: none !important;
+        max-height: 240px !important;
+      }
+      /* The row whose options are open stays highlighted. */
+      #filtersGroup > div.relative:has(> .oww-dropdown:not(.hidden)) > button { background: rgba(0,0,0,.05); }
+      .dark #filtersGroup > div.relative:has(> .oww-dropdown:not(.hidden)) > button { background: rgba(255,255,255,.08); }
+    }
+
+    /* Phone panel: an active filter reads "Category ······ Echoes of Time" —
+       the type on the left, the value on the right (ending in … if long). */
+    @media (max-width: 767.98px) {
+      #filtersGroup button[id$="Btn"] > span:not(.oww-type) {
+        flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+      }
+      #filterBar #filtersGroup .oww-val { max-width: none; min-width: 0; margin-left: 0; text-align: right; }
+    }
     #filterBar.oww-tight .oww-type { display: none; }
     #filterBar.oww-tight .oww-val { margin-left: 0; }
     /* Tight: the buttons give up some side padding too. */

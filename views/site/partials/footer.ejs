@@ -21,7 +21,7 @@
              filters sit in one row; if active filters make that row wider than the screen,
              app.js adds .oww-compact to the nav and it folds back into this panel. ── %>
       <button type="button" id="filtersToggle" aria-expanded="false" aria-controls="filtersGroup" class="md:hidden flex items-center gap-2 px-5 py-3 rounded-[26px] bg-paper dark:bg-nightpill shadow-[0_6px_28px_rgba(0,0,0,0.13)] dark:shadow-[0_6px_28px_rgba(0,0,0,0.6)] text-[15px] text-ink/85 dark:text-white/85">
-        <svg class="w-[18px] h-[18px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M7 12h10M10 18h4"></path></svg><span>Filters</span><span id="filtersCount" class="hidden min-w-[22px] h-[22px] px-1.5 rounded-full bg-ink text-paper dark:bg-white dark:text-ink text-[12px] font-medium leading-[22px] text-center"></span>
+        <svg class="w-[18px] h-[18px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M7 12h10M10 18h4"></path></svg><span>Filters</span><span id="filtersCount" class="hidden w-1.5 h-1.5 rounded-full bg-ink dark:bg-white" role="status"></span>
       </button>
 
       <div id="filtersGroup" class="hidden w-[calc(100vw-2rem)] max-w-[314px] p-2 rounded-[20px] absolute bottom-[calc(100%+12px)] right-0

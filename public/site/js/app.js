@@ -462,7 +462,8 @@
         return !!activeFilters[type];
       }).length;
 
-      countEl.textContent = n ? String(n) : "";
+      // A dot (as in the design); the number is read out for screen readers.
+      countEl.setAttribute("aria-label", n ? n + (n === 1 ? " filter" : " filters") + " on" : "");
       countEl.classList.toggle("hidden", !n);
     }
   }
@@ -855,7 +856,8 @@
     var active = activeFilters[type];
 
     if (active && type === "country" && active.indexOf("::") !== -1) {
-      active = active.slice(active.indexOf("::") + 2).split("|")[0];
+      // "city::Panna|Madhya Pradesh" → "Panna, Madhya Pradesh" (trimmed with … if long).
+      active = active.slice(active.indexOf("::") + 2).split("|").filter(Boolean).join(", ");
     }
 
     if (active) {
@@ -906,6 +908,10 @@
     { tight: false, widths: [150, 120, 100] },
     { tight: true, widths: [170, 150, 120, 100, 84, 70, 58, 46, 38] },
   ];
+  // Wider than 1024px the type words always stay; only the values shorten.
+  var STEPS_WIDE = [
+    { tight: false, widths: [150, 120, 100, 84, 70, 58, 46, 38] },
+  ];
 
   function fitFilterBar() {
     var bar = document.getElementById("filterBar");
@@ -924,10 +930,12 @@
     if (fits()) return;
 
     // Measure and adjust in one go (same frame), so nothing flickers.
-    for (var p = 0; p < STEPS.length; p++) {
-      bar.classList.toggle("oww-tight", STEPS[p].tight);
-      for (var i = 0; i < STEPS[p].widths.length; i++) {
-        bar.style.setProperty("--oww-val-max", STEPS[p].widths[i] + "px");
+    var steps = window.innerWidth > 1024 ? STEPS_WIDE : STEPS;
+
+    for (var p = 0; p < steps.length; p++) {
+      bar.classList.toggle("oww-tight", steps[p].tight);
+      for (var i = 0; i < steps[p].widths.length; i++) {
+        bar.style.setProperty("--oww-val-max", steps[p].widths[i] + "px");
         if (fits()) return;
       }
     }
@@ -951,6 +959,14 @@
       });
 
       menuEl.classList.toggle("hidden", !isHidden);
+
+      // Phones: the options open inline inside the Filters panel (see
+      // head.ejs), so bring the opened list into view within the panel.
+      if (isHidden && window.matchMedia("(max-width: 767.98px)").matches) {
+        requestAnimationFrame(function () {
+          menuEl.scrollIntoView({ block: "nearest" });
+        });
+      }
     });
 
     menuEl.addEventListener("click", function (e) {
