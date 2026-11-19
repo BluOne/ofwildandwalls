@@ -108,17 +108,16 @@
     .dark .hdr-seg-btn:hover { color: #fff; }
     .dark .hdr-seg-btn.is-active { background: #0b0b0b; color: #fff; box-shadow: none; }
 
-    /* Tablet (768–1279px): the design uses smaller header controls and a
-       slimmer filter bar here than on desktop or in the phone bottom bar. */
-    @media (min-width: 768px) and (max-width: 1279.98px) {
+    /* Tablet and desktop (768px up): the design's compact header controls
+       (34px round buttons, 117×34 Flow/Grid) and slim filter bar (~54px tall,
+       16px icons). Phones keep the larger bottom-bar controls. */
+    @media (min-width: 768px) {
       .site-header .hdr-chip { width: 34px; height: 34px; }
       .site-header .hdr-chip svg { width: 17px; height: 17px; }
       .site-header .hdr-seg { padding: 3px; }
       .site-header .hdr-seg-btn { height: 28px; line-height: 28px; padding: 0 13px; font-size: 14px; }
-      /* Filter bar ~54px tall with 16px icons, and a bit narrower so it keeps
-         some margin at 768px. */
       #filterBar:not(.oww-compact) #filtersGroup button[id$="Btn"] {
-        padding: 7px 14px;
+        padding: 7px 15px;
       }
       #filterBar:not(.oww-compact) #filtersGroup button[id$="Btn"] svg { width: 16px; height: 16px; }
     }

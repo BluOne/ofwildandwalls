@@ -17,6 +17,7 @@
     only the tiles on screen (see the Flow IIFE in app.js). %>
 <section id="flowView">
   <div id="flowField" tabindex="0" aria-label="Photo wall. Drag, scroll or use the arrow keys to explore."></div>
+  <p id="flowHint" class="flow-hint">Drag to explore</p>
   <p id="flowEmpty" class="flow-empty" hidden>No photos match these filters.</p>
   <script id="flowData" type="application/json"><%- JSON.stringify(typeof flowPhotos !== 'undefined' ? flowPhotos : []).replace(/</g, '\\u003c') %></script>
   <noscript>
