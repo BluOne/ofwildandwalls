@@ -196,6 +196,9 @@
     .hdr-chip:hover { color: #141414; background: rgba(228,228,228,.95); }
     .dark .hdr-chip { color: rgba(255,255,255,.8); }
     .dark .hdr-chip:hover { color: #fff; background: rgba(52,52,52,.92); }
+    /* The header's Instagram button is 42×42 at every size (more specific than
+       the .hdr-chip size rules, so it wins on phone, tablet and desktop). */
+    .site-header a.hdr-chip { width: 42px; height: 42px; }
     .hdr-seg { display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 9999px; }
     .hdr-seg-btn {
       height: 40px; padding: 0 18px; border-radius: 9999px;
