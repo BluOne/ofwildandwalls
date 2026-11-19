@@ -538,6 +538,7 @@
    */
   var flowLoadAll = null;
   var gridLoadAll = null;
+  var gridRelayout = null; // phone Grid masonry; re-run after filtering
   var flowRelayout = null;
 
   // Set once each view's own IIFE runs, so the Flow/Grid tab switcher below
@@ -762,6 +763,9 @@
     });
     if (flowRelayout) {
       flowRelayout();
+    }
+    if (gridRelayout) {
+      gridRelayout();
     }
     refreshFacets();
   }
@@ -2156,7 +2160,7 @@
         "<img" +
         photoImgAttrs(
           p,
-          gridAspect ? "calc(43.3vh * " + gridAspect.toFixed(4) + ")" : "960px",
+          gridAspect ? "calc(55vh * " + gridAspect.toFixed(4) + ")" : "960px",
         ) +
         ' class="photo-img h-full w-auto object-cover select-none"' +
         (p.color ? ' style="background-color: ' + escAttr(p.color) + '"' : "") +
@@ -2168,7 +2172,7 @@
         '<span aria-hidden="true" class="pointer-events-none absolute bottom-0 right-0 w-[44px] h-[48px] translate-x-[9px] translate-y-[9px] border-b-2 border-r-2 border-[#F4B508] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>' +
         // Caption
         '<span class="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2.5 whitespace-nowrap font-tight text-[14px] font-medium leading-none tracking-[-0.01em] text-center text-ink dark:text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300">' +
-        esc(p.cap) +
+        esc(p.title || p.cap) +
         "</span>";
 
       return a;
@@ -2294,7 +2298,66 @@
     }
 
     gridLoadAll = loadAllRemaining;
-    restoreGridScroll = showGrid;
+    restoreGridScroll = function () {
+      gridMasonry();
+      showGrid();
+    };
+
+    /*
+     * Phones: Grid is a two-column wall that scrolls down (styles in
+     * head.ejs). Rows are 1px tall, and each photo spans as many rows as it
+     * is high (plus the gap), so with dense placement every photo drops into
+     * whichever column is shorter — a masonry wall, newest first.
+     */
+    var phoneMQ = window.matchMedia("(max-width: 767.98px)");
+    var GRID_GAP = 24;
+
+    function gridMasonry() {
+      var items = Array.prototype.slice.call(
+        (copies[0] || track).querySelectorAll(".photo-item"),
+      );
+
+      if (!phoneMQ.matches) {
+        items.forEach(function (a) { a.style.gridRowEnd = ""; });
+        return;
+      }
+
+      var shown = items.filter(function (a) { return a.style.display !== "none"; });
+
+      // Let each photo take its natural height, then size its span to it.
+      shown.forEach(function (a) { a.style.gridRowEnd = "span 1"; });
+      shown.forEach(function (a) {
+        var h = a.getBoundingClientRect().height;
+        a.style.gridRowEnd = "span " + Math.max(1, Math.ceil(h + GRID_GAP));
+      });
+    }
+
+    gridRelayout = gridMasonry;
+
+    var masonryTimer = null;
+    function queueMasonry() {
+      clearTimeout(masonryTimer);
+      masonryTimer = setTimeout(gridMasonry, 100);
+    }
+
+    window.addEventListener("resize", queueMasonry);
+    if (phoneMQ.addEventListener) phoneMQ.addEventListener("change", gridMasonry);
+    // A photo with no stored size only knows its height once it has loaded.
+    track.addEventListener("load", function (e) {
+      if (phoneMQ.matches && e.target.tagName === "IMG" && !e.target.getAttribute("height")) queueMasonry();
+    }, true);
+
+    // Phones scroll the page down instead of the strip sideways: load the
+    // next page as the bottom gets near.
+    var gridSectionForScroll = document.getElementById("gridView");
+    window.addEventListener("scroll", function () {
+      if (!phoneMQ.matches || !hasMore || !gridSectionForScroll || gridSectionForScroll.classList.contains("hidden")) return;
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - LOAD_MARGIN) {
+        loadNextPage();
+      }
+    }, { passive: true });
+
+    if (!gridSectionForScroll.classList.contains("hidden")) gridMasonry();
 
     // Grid is hidden while Flow is open, and lazy images in a hidden section
     // never start downloading — so switching tabs began every download from

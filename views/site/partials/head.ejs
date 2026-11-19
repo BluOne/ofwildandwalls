@@ -74,6 +74,67 @@
       max-width: var(--oww-val-max, 170px);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
+    /* Grid strip (768px up), as in the design: tall photos (~55% of the
+       window), 18px apart with ~34px at the edges, and the title always
+       shown under each photo — left-aligned, muted, one line. */
+    @media (min-width: 768px) {
+      #gridView .photo-item { height: 55vh; max-height: calc(100vh - 260px); }
+      #gridView #gridTrack { gap: 18px; padding-left: 34px; padding-right: 34px; }
+      #gridView .grid-copy { gap: 18px; }
+      #gridView .photo-item > span:last-child {
+        left: 0; right: auto; transform: none; translate: none; opacity: 1;
+        margin-top: 12px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        max-width: 100%; font-size: 13px; font-weight: 400; letter-spacing: 0; line-height: 1.2;
+        color: rgba(20,20,20,.55);
+      }
+      .dark #gridView .photo-item > span:last-child { color: rgba(255,255,255,.55); }
+    }
+
+    /* Grid hover (mouse, 768px up), as in Flow: the hovered photo stays
+       bright with small amber corners close to its edges and a bright title;
+       the other photos dim. */
+    @media (hover: hover) and (min-width: 768px) {
+      #gridView .photo-item { transition: opacity .35s ease-out; }
+      #gridTrack:has(.photo-item:hover) .photo-item:not(:hover) { opacity: .45; }
+      #gridView .photo-item:hover > span:last-child { color: #141414; font-weight: 500; }
+      .dark #gridView .photo-item:hover > span:last-child { color: #fff; }
+      #gridView .photo-item > span[aria-hidden] { width: 18px; height: 20px; }
+      #gridView .photo-item > span[aria-hidden]:nth-of-type(1) { transform: translate(-4px, -4px); }
+      #gridView .photo-item > span[aria-hidden]:nth-of-type(2) { transform: translate(4px, -4px); }
+      #gridView .photo-item > span[aria-hidden]:nth-of-type(3) { transform: translate(-4px, 4px); }
+      #gridView .photo-item > span[aria-hidden]:nth-of-type(4) { transform: translate(4px, 4px); }
+    }
+
+    /* Phone Grid: a two-column wall that scrolls down (instead of the
+       sideways strip), photos at their own shape with the caption under
+       each. app.js sets each photo's grid-row span from its height so the
+       columns pack like a masonry wall (see gridMasonry). */
+    /* Grid captions: the full caption, trimmed with … at the photo's width
+       on the strip (it shows on hover there). */
+    #gridView .photo-item > span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    @media (max-width: 767.98px) {
+      #gridView:not(.hidden) { display: block; height: auto; overflow: visible; padding: 92px 16px 110px; }
+      #gridView #gridStrip { display: block; height: auto; overflow: visible; }
+      #gridView #gridTrack {
+        display: grid; grid-template-columns: 1fr 1fr; column-gap: 20px; row-gap: 0;
+        grid-auto-rows: 1px; grid-auto-flow: row dense; align-items: start;
+        min-width: 0; margin: 0; padding: 0;
+      }
+      #gridView .grid-copy { display: contents; }
+      #gridView .grid-copy:not(:first-child) { display: none; }
+      #gridView .photo-item { display: block; width: auto; height: auto; max-height: none; }
+      #gridView .photo-item .photo-img { width: 100%; height: auto; }
+      /* Label: the photo's title, one line in muted text, "…" if long. */
+      #gridView .photo-item > span:last-child {
+        position: static; transform: none; translate: none; display: block; opacity: 1;
+        margin-top: 10px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        line-height: 1.3; font-size: 13px; font-weight: 400; letter-spacing: 0;
+        color: rgba(20,20,20,.55);
+      }
+      .dark #gridView .photo-item > span:last-child { color: rgba(255,255,255,.55); }
+      #gridView .photo-item > span[aria-hidden] { display: none; }
+    }
+
     /* Phone panel: tapping a filter opens its options inline, right under
        that row, in a scrolling inner card (instead of a pop-up above). The
        panel itself scrolls if it gets taller than the screen. */
