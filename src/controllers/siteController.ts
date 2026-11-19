@@ -172,6 +172,8 @@ const mapToSitePhoto = (
     // even though they correctly showed up under the country filter. Falling back
     // to the free-text field only covers legacy rows with no country_id at all.
     state: (row as any).country_state || row.state || "",
+    // The picked city (countries.city), used by the Location filter.
+    city: (row as any).country_city || "",
     // detail-panel fields
     about: row.description || "",
     altNote: row.alt_note || "",
@@ -298,7 +300,7 @@ const getGallery = async (req: Request, res: Response) => {
         slug: p.slug, t: p.cap || p.title, alt: p.alt,
         src: p.srcSmall || p.src, srcset: p.srcset, w: p.width, h: p.height, c: p.color,
         category: p.category, collection: p.collection, camera: p.camera, lens: p.lens,
-        country: p.country, state: p.state, year: p.year,
+        country: p.country, state: p.state, city: p.city, year: p.year,
       };
     });
 
@@ -354,6 +356,11 @@ const getPhotoDetail = async (req: Request, res: Response) => {
           if ((r.country_name || "").trim().toLowerCase() !== filterCountry.replace("country::", "")) return false;
         } else if (filterCountry.startsWith("state::")) {
           if ((r.country_state || "").trim().toLowerCase() !== filterCountry.replace("state::", "")) return false;
+        } else if (filterCountry.startsWith("city::")) {
+          // "city::<city>|<state>" — a city name can repeat across states.
+          const [city, state] = filterCountry.replace("city::", "").split("|");
+          if ((r.country_city || "").trim().toLowerCase() !== city) return false;
+          if ((r.country_state || "").trim().toLowerCase() !== (state || "")) return false;
         } else {
           const target = filterCountry;
           if ((r.country_name || "").trim().toLowerCase() !== target && (r.country_state || "").trim().toLowerCase() !== target) return false;
@@ -738,23 +745,44 @@ const getCategoriesAPI = async (req: Request, res: Response) => {
  */
 const getCountriesAPI = async (req: Request, res: Response) => {
   try {
+    // Places photos were taken, for the Location menu: each city ("Kanha,
+    // Madhya Pradesh"), plus a whole-state entry for states that have photos
+    // with no city picked. Grouped by country; counts are live photos.
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT co.country AS country, co.state AS state, COUNT(*) AS cnt
+      `SELECT co.country AS country, co.state AS state, co.city AS city, COUNT(*) AS cnt
        FROM photos p
        JOIN countries co ON p.country_id = co.id
        WHERE p.live = 1 AND p.country_id IS NOT NULL
-       GROUP BY co.country, co.state
-       ORDER BY co.country ASC, co.state ASC`
+       GROUP BY co.country, co.state, co.city`
     );
 
-    const groupMap: Record<string, { name: string; count: number }[]> = {};
+    type Place = { value: string; label: string; count: number };
+    const byCountry: Record<string, { total: number; cities: Place[]; states: Record<string, { all: number; noCity: number }> }> = {};
     rows.forEach(r => {
       const country = r.country || "Other";
-      if (!groupMap[country]) groupMap[country] = [];
-      groupMap[country].push({ name: r.state, count: Number(r.cnt) || 0 });
+      const state = r.state || "";
+      const cnt = Number(r.cnt) || 0;
+      const g = (byCountry[country] ||= { total: 0, cities: [], states: {} });
+      g.total += cnt;
+      const st = (g.states[state] ||= { all: 0, noCity: 0 });
+      st.all += cnt;
+      if (r.city) {
+        g.cities.push({ value: `city::${r.city}|${state}`, label: state ? `${r.city}, ${state}` : r.city, count: cnt });
+      } else {
+        st.noCity += cnt;
+      }
     });
 
-    const countries = Object.entries(groupMap).map(([country, states]) => ({ country, states }));
+    const countries = Object.entries(byCountry)
+      .sort((a, b) => b[1].total - a[1].total)
+      .map(([country, g]) => {
+        const statePlaces: Place[] = Object.entries(g.states)
+          .filter(([state, st]) => state && st.noCity > 0)
+          .map(([state, st]) => ({ value: `state::${state}`, label: state, count: st.all }));
+        const places = g.cities.concat(statePlaces).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+        return { country, total: g.total, places };
+      });
+
     res.json({ success: true, count: countries.length, countries });
   } catch (err) {
     console.error("API error /api/countries:", err);

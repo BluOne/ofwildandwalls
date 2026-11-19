@@ -313,7 +313,7 @@
     return p.width && p.height ? p.width / p.height : 0;
   }
 
-  function itemRow(name, count) {
+  function itemRow(name, count, label) {
     return (
       '<button type="button" data-name="' +
       escAttr(name) +
@@ -323,7 +323,7 @@
       ' class="oww-filter-item w-full flex items-center justify-between gap-3 px-4 py-1.5 text-[15px] text-left' +
       ' hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors" aria-pressed="false">' +
       '<span class="oww-name min-w-0">' +
-      esc(name) +
+      esc(label || name) +
       "</span>" +
       // Tick sits just before the count on the selected value (see markActiveItems).
       '<span class="flex shrink-0 items-center gap-1.5">' +
@@ -361,7 +361,7 @@
       .map(function (g) {
         var rows = (g.models || [])
           .map(function (m) {
-            return itemRow(m.name, m.count);
+            return itemRow(m.name, m.count, m.label);
           })
           .join("");
 
@@ -596,6 +596,17 @@
 
         var prefix = val.slice(0, separatorIndex);
         var slug = val.slice(separatorIndex + 2).toLowerCase();
+
+        if (prefix === "city") {
+          // "city::<city>|<state>" — city names repeat across states.
+          var parts = slug.split("|");
+          if ((get("city") || "").trim().toLowerCase() !== parts[0] ||
+              (get("state") || "").trim().toLowerCase() !== (parts[1] || "")) {
+            visible = false;
+          }
+          return;
+        }
+
         var field = prefix === "country" ? "country" : "state";
 
         if ((get(field) || "").trim().toLowerCase() !== slug) {
@@ -655,6 +666,7 @@
       if (type === "country") {
         if (lowerKey(p.country)) add("country::" + lowerKey(p.country));
         if (lowerKey(p.state)) add("state::" + lowerKey(p.state));
+        if (lowerKey(p.city)) add("city::" + lowerKey(p.city) + "|" + lowerKey(p.state));
       } else {
         add(lowerKey(p[dataAttrMap[type]]));
       }
@@ -684,7 +696,7 @@
             brand: g.brand,
             models: (g.models || [])
               .map(function (m) {
-                return { name: m.name, count: counts[lowerKey(m.name)] || 0 };
+                return Object.assign({}, m, { count: counts[lowerKey(m.name)] || 0 });
               })
               .filter(function (m) { return keep(m.name, m.count); }),
           };
@@ -840,7 +852,7 @@
     var active = activeFilters[type];
 
     if (active && type === "country" && active.indexOf("::") !== -1) {
-      active = active.slice(active.indexOf("::") + 2);
+      active = active.slice(active.indexOf("::") + 2).split("|")[0];
     }
 
     if (active) {
@@ -1007,7 +1019,7 @@
 
   /* ── Setup a menu: fetch → render → wire ─────────────────────────── */
 
-  function setupMenu(menuId, btnId, apiUrl, dataKey, renderFn, filterType) {
+  function setupMenu(menuId, btnId, apiUrl, dataKey, renderFn, filterType, adapt) {
     var menuEl = document.getElementById(menuId);
 
     var btnEl = document.getElementById(btnId);
@@ -1025,7 +1037,7 @@
         return r.json();
       })
       .then(function (data) {
-        var items = data[dataKey];
+        var items = adapt ? adapt(data[dataKey]) : data[dataKey];
 
         facetMenus[filterType] = function () {
           menuEl.innerHTML = renderFn(facetItems(filterType, items));
@@ -1091,340 +1103,41 @@
 
   /* ── Location ────────────────────────────────────────────────────── */
 
-  (function () {
-    var menuEl = document.getElementById("countryMenu");
-
-    var btnEl = document.getElementById("countryBtn");
-
-    if (!menuEl || !btnEl) return;
-
-    menuEl.classList.add("oww-dropdown");
-
-    var locationData = [];
-    var expandedSet = {};
-
-    function buildLocationHTML() {
-      if (locationData.length === 0) {
-        return (
-          '<p class="px-4 py-3 text-[13px] text-ink/40 dark:text-white/40 italic">' +
-          "No locations yet" +
-          "</p>"
-        );
-      }
-
-      return locationData
-        .map(function (c) {
-          var isExpanded = !!expandedSet[c.country];
-
-          var activeVal = activeFilters.country;
-
-          var isCountryActive = activeVal === "country::" + c.country;
-
-          var hasStates = c.states.length > 0;
-
-          var radioHtml =
-            '<label class="flex items-center justify-center w-4 h-4 shrink-0 cursor-pointer">' +
-            '<input type="radio" name="oww-loc" class="sr-only oww-loc-radio" data-kind="country" data-value="' +
-            escAttr(c.country) +
-            '">' +
-            '<span class="w-3.5 h-3.5 rounded-full border border-ink/30 dark:border-white/30 flex items-center justify-center' +
-            (isCountryActive
-              ? " border-ink dark:border-white bg-ink dark:bg-white"
-              : "") +
-            '">' +
-            (isCountryActive
-              ? '<span class="w-1.5 h-1.5 rounded-full bg-paper dark:bg-ink"></span>'
-              : "") +
-            "</span></label>";
-
-          var arrowHtml = hasStates
-            ? '<button type="button" class="oww-loc-expand ml-auto flex items-center justify-center w-6 h-6 rounded text-ink/40 dark:text-white/40 hover:text-ink dark:hover:text-white transition-colors" data-country="' +
-            escAttr(c.country) +
-            '">' +
-            '<svg viewBox="0 0 16 16" class="w-3 h-3 transition-transform' +
-            (isExpanded ? " rotate-180" : "") +
-            '" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>' +
-            "</button>"
-            : '<span class="w-6 ml-auto"></span>';
-
-          var html =
-            '<div class="flex items-center gap-2 px-3 py-2 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] rounded-lg cursor-pointer oww-loc-row" data-kind="country" data-value="' +
-            escAttr(c.country) +
-            '">' +
-            radioHtml +
-            '<span class="flex-1 text-[14px] text-ink dark:text-white">' +
-            esc(c.country) +
-            "</span>" +
-            '<span class="text-[12px] text-ink/35 dark:text-white/35 mr-1">' +
-            c.totalCount +
-            "</span>" +
-            arrowHtml +
-            "</div>";
-
-          if (isExpanded && hasStates) {
-            html += c.states
-              .map(function (s) {
-                var isStateActive = activeVal === "state::" + s.name;
-
-                var stateRadio =
-                  '<label class="flex items-center justify-center w-4 h-4 shrink-0 cursor-pointer">' +
-                  '<input type="radio" name="oww-loc" class="sr-only oww-loc-radio" data-kind="state" data-value="' +
-                  escAttr(s.name) +
-                  '">' +
-                  '<span class="w-3 h-3 rounded-full border border-ink/25 dark:border-white/25 flex items-center justify-center' +
-                  (isStateActive
-                    ? " border-ink dark:border-white bg-ink dark:bg-white"
-                    : "") +
-                  '">' +
-                  (isStateActive
-                    ? '<span class="w-1.5 h-1.5 rounded-full bg-paper dark:bg-ink"></span>'
-                    : "") +
-                  "</span></label>";
-
-                return (
-                  '<div class="flex items-center gap-2 pl-9 pr-3 py-1.5 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] rounded-lg cursor-pointer oww-loc-row" data-kind="state" data-value="' +
-                  escAttr(s.name) +
-                  '">' +
-                  stateRadio +
-                  '<span class="flex-1 text-[13px] text-ink/80 dark:text-white/80">' +
-                  esc(s.name) +
-                  "</span>" +
-                  '<span class="text-[12px] text-ink/30 dark:text-white/30">' +
-                  s.count +
-                  "</span>" +
-                  "</div>"
-                );
-              })
-              .join("");
-          }
-
-          return html;
-        })
-        .join("");
-    }
-
-    function rerender() {
-      var listEl = menuEl.querySelector("#oww-loc-list");
-
-      if (listEl) {
-        listEl.innerHTML = buildLocationHTML();
-      }
-    }
-
-    // Resolve a "country::X" / "state::X" activeFilters.country value to its
-    // matching count in locationData, for the filter-bar pill.
-    function lookupLocationCount(filterVal) {
-      if (!filterVal) return null;
-
-      if (filterVal.indexOf("country::") === 0) {
-        var countryName = filterVal.slice("country::".length);
-
-        for (var i = 0; i < locationData.length; i++) {
-          if (locationData[i].country === countryName) {
-            return locationData[i].totalCount;
-          }
-        }
-
-        return null;
-      }
-
-      if (filterVal.indexOf("state::") === 0) {
-        var stateName = filterVal.slice("state::".length);
-
-        for (var j = 0; j < locationData.length; j++) {
-          var states = locationData[j].states;
-
-          for (var k = 0; k < states.length; k++) {
-            if (states[k].name === stateName) {
-              return states[k].count;
-            }
-          }
-        }
-
-        return null;
-      }
-
-      return null;
-    }
-
-    fetch("/api/countries")
-      .then(function (r) {
-        return r.json();
-      })
-      .then(function (data) {
-        var rawCountries = data.countries || [];
-
-        // Counts follow the other active filters (see facetCounts); places
-        // with no matching photos are left out, except the selected one.
-        function computeLocationData() {
-          var counts = facetCounts("country");
-          var active = lowerKey(activeFilters.country);
-
-          locationData = rawCountries
-            .map(function (c) {
-              var states = c.states.map(function (s) {
-                return {
-                  name: s.name,
-                  count: counts ? counts["state::" + lowerKey(s.name)] || 0 : s.count || 0,
-                };
-              });
-
-              if (counts) {
-                states = states.filter(function (s) {
-                  return s.count > 0 || active === "state::" + lowerKey(s.name);
-                });
-              }
-
-              var total = counts
-                ? counts["country::" + lowerKey(c.country)] || 0
-                : states.reduce(function (a, s) { return a + (s.count || 0); }, 0);
-
-              return { country: c.country, totalCount: total, states: states };
-            })
-            .filter(function (c) {
-              return (
-                !counts ||
-                c.totalCount > 0 ||
-                c.states.length > 0 ||
-                active === "country::" + lowerKey(c.country)
-              );
-            });
-        }
-
-        computeLocationData();
-
-        facetMenus.country = function () {
-          computeLocationData();
-          rerender();
+  // Places, grouped under each country and sorted by how many photos they
+  // have: "Kanha, Madhya Pradesh [10]". A place is a city
+  // ("city::<city>|<state>") or, for photos saved without a city, the whole
+  // state ("state::<state>"). Same menu behaviour as the others (narrowing,
+  // tick, counts) via setupMenu/facetItems.
+  setupMenu(
+    "countryMenu",
+    "countryBtn",
+    "/api/countries",
+    "countries",
+    function (groups) {
+      var sorted = (groups || []).map(function (g) {
+        return {
+          brand: g.brand,
+          models: g.models.slice().sort(function (a, b) {
+            return b.count - a.count || String(a.label).localeCompare(String(b.label));
+          }),
         };
-
-        // A country/state filter restored from the URL on load has no count
-        // yet — now that locationData is here, look it up.
-        if (activeFilters.country) {
-          activeFilterCounts.country = lookupLocationCount(
-            activeFilters.country,
-          );
-
-          updateButtonLabel("country");
-        }
-
-        menuEl.innerHTML =
-          '<div class="flex items-center justify-between px-3 pt-2 pb-1">' +
-          '<span class="text-[10px] tracking-[0.12em] uppercase font-semibold text-ink/40 dark:text-white/40">Location</span>' +
-          '<button type="button" id="oww-loc-clear" class="text-[12px] text-ink/50 dark:text-white/50 hover:text-ink dark:hover:text-white transition-colors">Clear</button>' +
-          "</div>" +
-          '<p class="px-3 pb-1 text-[10px] tracking-[0.1em] uppercase font-semibold text-ink/35 dark:text-white/35">Countries</p>' +
-          '<div id="oww-loc-list" class="max-h-[260px] overflow-y-auto px-1 pb-1">' +
-          buildLocationHTML() +
-          "</div>" +
-          '<p class="px-3 py-2 text-[11px] text-ink/35 dark:text-white/35 border-t border-ink/8 dark:border-white/8 mt-1">Select a country for all its photographs, or expand it to choose a city.</p>';
-
-        var clearBtn = menuEl.querySelector("#oww-loc-clear");
-
-        if (clearBtn) {
-          clearBtn.addEventListener("click", function (e) {
-            e.stopPropagation();
-            activeFilters.country = null;
-            activeFilterCounts.country = null;
-
-            updateButtonLabel("country");
-            updateResetButton();
-
-            applyFiltersAfterLoading();
-            updateURLQuery();
-
-            menuEl.classList.add("hidden");
-          });
-        }
-
-        menuEl.addEventListener("click", function (e) {
-          if (e.target.closest(".oww-loc-radio")) {
-            return;
-          }
-
-          var expand = e.target.closest(".oww-loc-expand");
-
-          if (expand) {
-            e.stopPropagation();
-
-            var c = expand.getAttribute("data-country");
-
-            expandedSet[c] = !expandedSet[c];
-
-            rerender();
-
-            return;
-          }
-
-          var row = e.target.closest(".oww-loc-row");
-
-          if (!row) return;
-
-          e.stopPropagation();
-
-          var kind = row.getAttribute("data-kind");
-
-          var val = row.getAttribute("data-value");
-
-          if (kind === "country") {
-            expandedSet[val] = !expandedSet[val];
-
-            var newFilter = "country::" + val;
-
-            activeFilters.country = newFilter;
-          } else {
-            var newFilter = "state::" + val;
-
-            activeFilters.country = newFilter;
-          }
-
-          activeFilterCounts.country = lookupLocationCount(newFilter);
-
-          updateButtonLabel("country");
-          updateResetButton();
-
-          applyFiltersAfterLoading();
-          updateURLQuery();
-
-          rerender();
-
-          if (kind === "state" && activeFilters.country) {
-            menuEl.classList.add("hidden");
-          }
-        });
-      })
-      .catch(function () {
-        menuEl.innerHTML =
-          '<p class="px-4 py-2 text-[13px] text-red-400 italic">Failed to load</p>';
-      });
-    btnEl.addEventListener("click", function (e) {
-      e.stopPropagation();
-
-      var isHidden = menuEl.classList.contains("hidden");
-
-      document.querySelectorAll(".oww-dropdown").forEach(function (d) {
-        d.classList.add("hidden");
       });
 
-      menuEl.classList.toggle("hidden", !isHidden);
-    });
-
-    menuEl.addEventListener("click", function (e) {
-      e.stopPropagation();
-    });
-
-    document.addEventListener("click", function () {
-      menuEl.classList.add("hidden");
-    });
-
-    document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") {
-        document.querySelectorAll(".oww-dropdown").forEach(function (d) {
-          d.classList.add("hidden");
-        });
-      }
-    });
-  })();
+      return buildGroupedHTML(sorted);
+    },
+    "country",
+    // API shape → the grouped shape the menu builder uses.
+    function (countries) {
+      return (countries || []).map(function (c) {
+        return {
+          brand: c.country,
+          models: (c.places || []).map(function (pl) {
+            return { name: pl.value, label: pl.label, count: pl.count };
+          }),
+        };
+      });
+    },
+  );
 
   /* ── Year ────────────────────────────────────────────────────────── */
 
@@ -2402,6 +2115,8 @@
 
       a.setAttribute("data-state", p.state || "");
 
+      a.setAttribute("data-city", p.city || "");
+
       a.setAttribute("data-year", p.year || "");
 
       var gridAspect = photoAspect(p);
@@ -2749,7 +2464,7 @@
       a.style.width = it.w + "px";
       a.style.setProperty("--phh", it.h + "px");
       // Filter values, read by the shared filter code.
-      ["category", "collection", "camera", "lens", "country", "state", "year"].forEach(function (k) {
+      ["category", "collection", "camera", "lens", "country", "state", "city", "year"].forEach(function (k) {
         a.setAttribute("data-" + k, p[k] || "");
       });
 
