@@ -451,6 +451,9 @@
       resetFiltersBtn.classList.toggle("hidden", !hasActive);
     }
 
+    var resetDivider = document.getElementById("resetDivider");
+    if (resetDivider) resetDivider.style.display = hasActive ? "" : "none";
+
     // Phones/tablets: the collapsed "Filters" button shows how many are on.
     var countEl = document.getElementById("filtersCount");
 
@@ -870,15 +873,14 @@
       // On the one-row bar (md up) the type word is dropped while a value is
       // set — the icon identifies it — so several active filters still fit;
       // it returns on 2xl screens and in the stacked panel (.oww-type).
-      btn.title = defaultLabels[type] + ": " + active;
+      // As in the design: the type, then the value in white, on a lightly
+      // highlighted pill ("Category  Echoes of Time"). Counts stay in the menu.
+      btn.title = defaultLabels[type] + ": " + active + (countHtml ? " (" + count + ")" : "");
       labelEl.innerHTML =
-        '<span class="oww-type md:hidden 2xl:inline">' + defaultLabels[type] + "</span>" +
-        ' <span class="ml-1.5 md:ml-0 2xl:ml-1.5 px-2 py-0.5 rounded-[6px] bg-black/5 dark:bg-white/10 text-[13px] text-ink dark:text-white font-medium">' +
-        esc(short) +
-        countHtml +
-        "</span>";
+        defaultLabels[type] +
+        ' <span class="ml-1.5 font-medium text-ink dark:text-white">' + esc(short) + "</span>";
 
-      btn.classList.add("text-ink", "dark:text-white");
+      btn.classList.add("text-ink", "dark:text-white", "bg-black/[0.05]", "dark:bg-white/[0.08]");
       btn.classList.remove(
         "text-ink/85",
         "dark:text-white/85",
@@ -888,7 +890,7 @@
       btn.removeAttribute("title");
       labelEl.textContent = defaultLabels[type];
 
-      btn.classList.remove("text-ink", "dark:text-white", "text-[#c8a03c]");
+      btn.classList.remove("text-ink", "dark:text-white", "text-[#c8a03c]", "bg-black/[0.05]", "dark:bg-white/[0.08]");
       btn.classList.add("text-ink/85", "dark:text-white/85");
     }
 
@@ -2417,8 +2419,9 @@
 
         // Shortest column; on a tie, the one nearest the middle. Photos come
         // newest first and Flow opens on the middle columns, so the latest
-        // uploads fill the top of the screen you land on.
-        var mid = (C - 1) / 2;
+        // uploads fill the top of the screen you land on. A set that fits in
+        // one row (e.g. a narrow filter) just runs left to right instead.
+        var mid = list.length <= C ? -1 : (C - 1) / 2;
         var c = 0;
         for (k = 1; k < C; k++) {
           var shorter = cols[k].h < cols[c].h - 1;
