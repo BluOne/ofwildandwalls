@@ -99,6 +99,17 @@ const joinParts = (parts: any[], sep: string): string =>
   parts.map((v) => String(v || "").trim()).filter(Boolean).join(sep);
 
 /** Parse the JSON metadata column into a flat key→value map */
+/**
+ * The place a photo was taken, for the Location filter and its menu: the
+ * city picked from the list, else the free-text "Location" it was saved with
+ * (e.g. "Kanha", "Ranthambore" — most photos have this from before City existed).
+ */
+const placeOf = (row: any): string => {
+  if (row.country_city) return String(row.country_city).trim();
+  const m = parseMeta(row.metadata);
+  return String(m["Location"] || m["location"] || "").trim();
+};
+
 const parseMeta = (raw: any): Record<string, string> => {
   let arr: any[] = [];
   if (!raw) return {};
@@ -173,7 +184,7 @@ const mapToSitePhoto = (
     // to the free-text field only covers legacy rows with no country_id at all.
     state: (row as any).country_state || row.state || "",
     // The picked city (countries.city), used by the Location filter.
-    city: (row as any).country_city || "",
+    city: placeOf(row),
     // detail-panel fields
     about: row.description || "",
     altNote: row.alt_note || "",
@@ -359,7 +370,7 @@ const getPhotoDetail = async (req: Request, res: Response) => {
         } else if (filterCountry.startsWith("city::")) {
           // "city::<city>|<state>" — a city name can repeat across states.
           const [city, state] = filterCountry.replace("city::", "").split("|");
-          if ((r.country_city || "").trim().toLowerCase() !== city) return false;
+          if (placeOf(r).toLowerCase() !== city) return false;
           if ((r.country_state || "").trim().toLowerCase() !== (state || "")) return false;
         } else {
           const target = filterCountry;
@@ -748,20 +759,27 @@ const getCountriesAPI = async (req: Request, res: Response) => {
     // Places photos were taken, for the Location menu: each city ("Kanha,
     // Madhya Pradesh"), plus a whole-state entry for states that have photos
     // with no city picked. Grouped by country; counts are live photos.
-    const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT co.country AS country, co.state AS state, co.city AS city, COUNT(*) AS cnt
-       FROM photos p
-       JOIN countries co ON p.country_id = co.id
-       WHERE p.live = 1 AND p.country_id IS NOT NULL
-       GROUP BY co.country, co.state, co.city`
+    const [photoRows] = await pool.query<RowDataPacket[]>(
+      `${SELECT_SITE_PHOTOS} WHERE p.live = 1 AND p.country_id IS NOT NULL`
     );
+    // One row per (country, state, place) with its photo count.
+    const tally: Record<string, { country: string; state: string; city: string; cnt: number }> = {};
+    photoRows.forEach(r => {
+      const country = r.country_name || "";
+      if (!country) return;
+      const state = r.country_state || r.state || "";
+      const city = placeOf(r);
+      const k = [country, state, city.toLowerCase()].join("\u0000");
+      (tally[k] ||= { country, state, city, cnt: 0 }).cnt++;
+    });
+    const rows = Object.values(tally);
 
     type Place = { value: string; label: string; count: number };
     const byCountry: Record<string, { total: number; cities: Place[]; states: Record<string, { all: number; noCity: number }> }> = {};
     rows.forEach(r => {
       const country = r.country || "Other";
       const state = r.state || "";
-      const cnt = Number(r.cnt) || 0;
+      const cnt = r.cnt;
       const g = (byCountry[country] ||= { total: 0, cities: [], states: {} });
       g.total += cnt;
       const st = (g.states[state] ||= { all: 0, noCity: 0 });

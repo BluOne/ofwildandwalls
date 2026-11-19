@@ -160,6 +160,10 @@
 <%# Tags are hidden from the form (the site shows collections instead); a
     photo's existing tags are kept as they are when it's saved. %>
 <input type="hidden" name="tags" value="<%= photo.tags || '' %>">
+<%# The old free-text Location ("Kanha", "Ranthambore") is no longer edited
+    here, but it names the place in the site's Location filter for photos
+    without a City, so a photo keeps it when saved. %>
+<input type="hidden" name="location" value="<%= photo.location || '' %>">
 <script>
   document.querySelectorAll('[data-multi-picker]').forEach(function (root) {
     const search = root.querySelector('[data-pick-search]');
