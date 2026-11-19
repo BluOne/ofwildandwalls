@@ -88,7 +88,7 @@
     .dark .hdr-chip, .dark .hdr-seg { background: rgba(38,38,38,.82); }
     .hdr-chip {
       display: flex; align-items: center; justify-content: center;
-      width: 44px; height: 44px; border-radius: 9999px;
+      width: 48px; height: 48px; border-radius: 9999px;
       color: rgba(20,20,20,.8); transition: color .2s, background-color .2s;
     }
     .hdr-chip:hover { color: #141414; background: rgba(228,228,228,.95); }
@@ -96,8 +96,8 @@
     .dark .hdr-chip:hover { color: #fff; background: rgba(52,52,52,.92); }
     .hdr-seg { display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 9999px; }
     .hdr-seg-btn {
-      height: 36px; padding: 0 18px; border-radius: 9999px;
-      font-size: 15px; line-height: 36px; color: rgba(20,20,20,.6);
+      height: 40px; padding: 0 18px; border-radius: 9999px;
+      font-size: 16px; line-height: 40px; color: rgba(20,20,20,.6);
       transition: color .2s, background-color .2s, box-shadow .2s;
     }
     .hdr-seg-btn:hover { color: #141414; }
@@ -106,6 +106,21 @@
     .dark .hdr-seg-btn { color: rgba(255,255,255,.62); }
     .dark .hdr-seg-btn:hover { color: #fff; }
     .dark .hdr-seg-btn.is-active { background: #0b0b0b; color: #fff; box-shadow: none; }
+
+    /* Tablet (768–1279px): the design uses smaller header controls and a
+       slimmer filter bar here than on desktop or in the phone bottom bar. */
+    @media (min-width: 768px) and (max-width: 1279.98px) {
+      .site-header .hdr-chip { width: 34px; height: 34px; }
+      .site-header .hdr-chip svg { width: 17px; height: 17px; }
+      .site-header .hdr-seg { padding: 3px; }
+      .site-header .hdr-seg-btn { height: 28px; line-height: 28px; padding: 0 13px; font-size: 14px; }
+      /* Filter bar ~54px tall with 16px icons, and a bit narrower so it keeps
+         some margin at 768px. */
+      #filterBar:not(.oww-compact) #filtersGroup button[id$="Btn"] {
+        padding: 7px 14px;
+      }
+      #filterBar:not(.oww-compact) #filtersGroup button[id$="Btn"] svg { width: 16px; height: 16px; }
+    }
 
     /* ── Flow: endless drag canvas (#flowField). app.js lays photos out in one
        column width (native ratio, capped at 4:5 tall), shortest column first,
