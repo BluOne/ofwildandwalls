@@ -72,7 +72,7 @@
 
   /* ── build: one <img> per photo in the stage, one thumb per photo in the strip ── */
 
-  function build() {
+  function build(start) {
     var stage = document.createDocumentFragment();
     var track = document.createDocumentFragment();
 
@@ -90,7 +90,16 @@
       b.setAttribute("aria-label", p.title || "Photo " + (k + 1));
       var t = document.createElement("img");
       t.alt = "";
-      t.loading = "lazy";
+      // Thumbs are small (the 320px copy): load them all straight away
+      // rather than lazily — lazy loading only starts once the strip has
+      // scrolled to the current photo, so the thumbs around it came in late.
+      // The ones nearest the photo shown go first; the rest at low priority
+      // so they never hold up the big photo.
+      var near = Math.abs(k - start) <= 8;
+      // The ones on screen are decoded in step with the first paint, so they
+      // never show an empty box for a frame or two.
+      t.decoding = near ? "sync" : "async";
+      if ("fetchPriority" in t) t.fetchPriority = near ? "high" : "low";
       t.src = p.thumb;
       if (p.w && p.h) t.style.aspectRatio = p.w + " / " + p.h;
       b.appendChild(t);
@@ -255,7 +264,15 @@
 
   // Each frame: the thumb nearest the centre line becomes the photo; thumbs near
   // it ease outward (quadratic falloff).
-  function railLoop() {
+  // The strip opens already in its settled shape: the thumbs around the
+  // photo shown start at their eased-out position instead of growing into
+  // it over the first half second (which looked like the strip loading).
+  var railSettled = false;
+
+  // One pass over the strip: ease the thumbs near the centre line outward
+  // and make the nearest one the photo shown. `instant` puts them straight
+  // at their place (used once at start-up, see below).
+  function layoutRail(instant) {
     var ph = isPhone(), rr = vRail.getBoundingClientRect();
     var c = ph ? rr.left + rr.width / 2 : rr.top + rr.height / 2;
     var R = ph ? 170 : 260, MAX = ph ? 14 : 44, best = -1, bd = 1e9;
@@ -267,12 +284,17 @@
       if (d < bd) { bd = d; best = k; }
       if (d > R + 300 && bumps[k] === 0) continue;
       var tgt = d < R ? Math.pow(1 - d / R, 2) * MAX : 0;
-      bumps[k] += (tgt - bumps[k]) * 0.14;
+      bumps[k] = instant ? tgt : bumps[k] + (tgt - bumps[k]) * 0.14;
       if (Math.abs(bumps[k] - tgt) < 0.05) bumps[k] = tgt;
       vThumbs[k].style.transform = ph ? "translateY(" + -bumps[k] + "px)" : "translateX(" + bumps[k] + "px)";
     }
 
     if (best >= 0 && best !== vPos) setActive(best);
+  }
+
+  function railLoop() {
+    layoutRail(!railSettled);
+    railSettled = true;
     requestAnimationFrame(railLoop);
   }
 
@@ -459,13 +481,17 @@
   /* ── start on the photo in the URL ── */
 
   if (!LIST.length) return;
-  build();
   var start = Math.max(0, LIST.findIndex(function (p) { return p.slug === DATA.current; }));
+  build(start);
   setActive(start);
-  requestAnimationFrame(function () {
-    scrollRailTo(start, false);
-    requestAnimationFrame(railLoop);
-  });
+  // Place the strip now, not on the next animation frame: opened from the
+  // gallery the viewer starts invisible, and the browser barely runs
+  // animation frames there — the strip would sit flat until it showed and
+  // then jump into shape in front of the visitor.
+  scrollRailTo(start, false);
+  layoutRail(true);
+  railSettled = true;
+  requestAnimationFrame(railLoop);
 
   // In the gallery's frame: say when the first photo is on screen, so the
   // gallery can swap its zoomed copy for the real viewer.
@@ -473,7 +499,7 @@
     var first = vImgs[start];
     var sent = false;
     var ready = function () { if (sent) return; sent = true; tellParent("oww-viewer-ready"); };
-    if (first.complete && first.naturalWidth) requestAnimationFrame(ready);
+    if (first.complete && first.naturalWidth) setTimeout(ready, 0);
     else { first.addEventListener("load", ready, { once: true }); first.addEventListener("error", ready, { once: true }); }
     setTimeout(ready, 3000);
   }

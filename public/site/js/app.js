@@ -3486,6 +3486,66 @@
       try { frame.focus(); } catch (e) {}
     }
 
+    var thumbsFetched = {};
+
+    // Once the gallery has settled, fetch every strip thumbnail in the
+    // background (small 320px copies, a few at a time, low priority), so any
+    // photo opened later finds its whole strip already downloaded. Images
+    // come from S3 over HTTP/1.1 (about 6 downloads at once), so doing this
+    // ahead of time keeps them from queueing behind the big photo on open.
+    (function warmThumbs() {
+      var c = navigator.connection;
+      if (c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || ""))) return;
+
+      var queue = [], busy = 0, LIMIT = 3;
+      function pump() {
+        while (busy < LIMIT && queue.length) {
+          var src = queue.shift();
+          if (thumbsFetched[src]) continue;
+          thumbsFetched[src] = 1;
+          busy++;
+          var im = new Image();
+          im.decoding = "async";
+          if ("fetchPriority" in im) im.fetchPriority = "low";
+          im.onload = im.onerror = function () { busy--; pump(); };
+          im.src = src;
+        }
+      }
+      function start() {
+        (getFacetPhotos() || []).forEach(function (p) { if (p.src) queue.push(p.src); });
+        pump();
+      }
+      // After the page's own photos (Flow's preload starts ~1.2s, Grid's ~1.5s).
+      window.addEventListener("load", function () {
+        setTimeout(function () {
+          if ("requestIdleCallback" in window) requestIdleCallback(start, { timeout: 3000 });
+          else start();
+        }, 3000);
+      });
+    })();
+
+    function preloadStripThumbs(slug) {
+      var photos = getFacetPhotos();
+      if (!photos) return;
+      var list = photos.filter(function (p) {
+        return photoMatchesFilters(function (name) { return p[name]; });
+      });
+      var at = list.findIndex(function (p) { return p.slug === slug; });
+      if (at < 0) return;
+      // Nearest first; the strip shows about a dozen at a time.
+      for (var d = 0; d <= 12; d++) {
+        [at + d, at - d].forEach(function (k, i) {
+          if ((d === 0 && i) || !list[k]) return;
+          var src = list[k].src;
+          if (!src || thumbsFetched[src]) return;
+          thumbsFetched[src] = 1;
+          var im = new Image();
+          im.decoding = "async";
+          im.src = src;
+        });
+      }
+    }
+
     function open(link, fromHistory) {
       ensureOverlay();
       var href = link.getAttribute("href");
@@ -3508,6 +3568,12 @@
 
       var img = link.querySelector(".photo-img");
       var from = img && img.getBoundingClientRect();
+
+      // Start the strip's thumbnails now too, alongside the zoom: the viewer
+      // only loads once the photo has landed, so on a slow connection its
+      // strip would otherwise fill in late. Its photos are the gallery's,
+      // filtered and ordered the same, and a thumb is the photo's small copy.
+      preloadStripThumbs(slug);
 
       // Fetch the exact image the viewer will show (same srcset and sizes as
       // viewer.js) while the photo flies: the copy switches to it once ready
