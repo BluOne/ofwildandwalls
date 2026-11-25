@@ -25,6 +25,22 @@
   var vDetTop = document.getElementById("vDetTop");
   var vHint = document.getElementById("vHint");
 
+  // Opened from the gallery, the viewer runs in a full-screen frame over it
+  // (?embed=1, see "Photo overlay" in app.js). It then reports to the gallery
+  // instead of touching the address bar or leaving the page.
+  var EMBED = window.parent !== window && /[?&]embed=1(&|$)/.test(location.search);
+  if (EMBED) document.documentElement.classList.add("v-embed");
+
+  function tellParent(type, extra) {
+    if (!EMBED) return;
+    var p = cur();
+    var shown = vImgs[vPos];
+    var msg = { type: type, slug: p ? p.slug : "", rect: p ? fitRect(p) : null,
+                src: shown ? (shown.currentSrc || shown.src) : "" };
+    for (var k in extra) msg[k] = extra[k];
+    try { window.parent.postMessage(msg, location.origin); } catch (e) {}
+  }
+
   var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var canHover = window.matchMedia("(hover: hover)").matches;
   var isPhone = function () { return window.innerWidth < 768; };
@@ -143,8 +159,12 @@
     clearTimeout(urlTimer);
     urlTimer = setTimeout(function () {
       var p = cur();
-      history.replaceState(null, "", "/photo/" + encodeURIComponent(p.slug) + QS);
-      document.title = (p.title ? p.title + " · " : "") + "Of Wild & Walls";
+      var url = "/photo/" + encodeURIComponent(p.slug) + QS;
+      var title = (p.title ? p.title + " · " : "") + "Of Wild & Walls";
+      // In the gallery's frame, the gallery keeps its own address bar in step.
+      if (EMBED) { tellParent("oww-viewer-change", { url: url, title: title }); return; }
+      history.replaceState(null, "", url);
+      document.title = title;
     }, 250);
   }
 
@@ -293,6 +313,8 @@
 
   // Back to where the visitor came from on this site, else to the gallery.
   function closeViewer() {
+    // In the gallery's frame: the gallery closes it (shrinking the photo back).
+    if (EMBED) { tellParent("oww-viewer-close"); return; }
     var sameSite = document.referrer && document.referrer.indexOf(window.location.host) !== -1;
     if (sameSite && history.length > 1) history.back();
     else window.location.href = "/" + QS;
@@ -371,6 +393,30 @@
   vStage.addEventListener("pointerup", endSwipe);
   vStage.addEventListener("pointercancel", function () { if (sw) { sw = null; scrollRailTo(vPos, true); } });
 
+  // The gallery's round cursor (shared with Flow and Grid, see app.js): "+"
+  // over the photo itself (not the empty stage around it), and "×" anywhere
+  // in full screen, where any click leaves full screen. The normal pointer
+  // comes back everywhere else, and while dragging.
+  var PC = canHover ? window.owwCursor : null;
+  function photoCursor(e) {
+    if (!PC) return;
+    var on = !(sw && sw.moved) && LIST.length && (isFull || overPhoto(e.clientX, e.clientY));
+    viewer.classList.toggle("pc-on", !!on);
+    if (on) {
+      PC.close(isFull);
+      PC.at(e.clientX, e.clientY);
+      PC.show();
+    } else {
+      PC.hide();
+    }
+  }
+  if (PC) {
+    vStage.addEventListener("pointermove", photoCursor);
+    vStage.addEventListener("pointerdown", photoCursor);
+    vStage.addEventListener("pointerup", function (e) { requestAnimationFrame(function () { photoCursor(e); }); });
+    vStage.addEventListener("pointerleave", function () { viewer.classList.remove("pc-on"); PC.hide(); });
+  }
+
   // When the strip comes to rest on its own, centre the nearest thumb.
   var railIdle = 0;
   vRail.addEventListener("scroll", function () {
@@ -420,4 +466,15 @@
     scrollRailTo(start, false);
     requestAnimationFrame(railLoop);
   });
+
+  // In the gallery's frame: say when the first photo is on screen, so the
+  // gallery can swap its zoomed copy for the real viewer.
+  if (EMBED) {
+    var first = vImgs[start];
+    var sent = false;
+    var ready = function () { if (sent) return; sent = true; tellParent("oww-viewer-ready"); };
+    if (first.complete && first.naturalWidth) requestAnimationFrame(ready);
+    else { first.addEventListener("load", ready, { once: true }); first.addEventListener("error", ready, { once: true }); }
+    setTimeout(ready, 3000);
+  }
 })();

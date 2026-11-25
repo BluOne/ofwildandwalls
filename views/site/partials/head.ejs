@@ -9,6 +9,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Playfair+Display:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
+  <%# Tailwind (CDN) builds the utility CSS in the browser on every page load.
+      The photo page styles itself and doesn't use it, so it opts out
+      (noTailwind) — which keeps opening a photo from the gallery quick. %>
+  <% if (typeof noTailwind === 'undefined' || !noTailwind) { %>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -23,6 +27,7 @@
       } },
     };
   </script>
+  <% } %>
   <style>
     /* `vw` units include the scrollbar's own width on platforms with a reserved
        (non-overlay) scrollbar, so any fixed/absolute element sized or centered
@@ -76,6 +81,19 @@
     ::view-transition-old(hero), ::view-transition-new(hero) { width: 100%; height: 100%; object-fit: contain; }
     ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .35s; }
     @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+
+    /* ── Photo overlay: the viewer in a full-screen frame over the gallery
+       (app.js, "Photo overlay"), a backdrop that fades in, and the copy of
+       the photo that flies between its tile and the viewer. ── */
+    #photoOverlay { position: fixed; inset: 0; z-index: 60; }
+    #photoOverlay[hidden] { display: none; }
+    #photoOverlay .po-backdrop { position: absolute; inset: 0; background: #fff; opacity: 0; }
+    .dark #photoOverlay .po-backdrop { background: #0d0d0d; }
+    #photoOverlay .po-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; opacity: 0;
+                              background: transparent; transition: opacity .25s ease; color-scheme: normal; }
+    .po-clone { position: fixed; z-index: 61; margin: 0; object-fit: cover; pointer-events: none;
+                transform-origin: 50% 50%; will-change: transform, clip-path; }
+    html.po-open, html.po-open body { overflow: hidden; }
 
     /* ── Search mode: the filter bar (and the phone's theme/view controls) give
        way to the search field + suggestion chips (#searchBar). ── */
@@ -328,6 +346,9 @@
       color: #fff;
     }
     .photo-plus-cursor.is-visible { opacity: 1; }
+    .photo-plus-cursor .pc-x { display: none; }
+    .photo-plus-cursor.is-close .pc-plus { display: none; }
+    .photo-plus-cursor.is-close .pc-x { display: inline; }
 
     /* Grid's horizontal strip: swiping past its first or last photo on a
        touchpad made Chrome show its back/forward arrow and navigate

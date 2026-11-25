@@ -593,6 +593,7 @@
   var restoreFlowScroll = null;
   var restoreGridScroll = null;
   var saveFlowCamera = null; // set by Flow; called when switching to Grid
+  var flowSetPaused = null; // set by Flow; the photo overlay pauses it while open
 
   function applyFiltersAfterLoading() {
     var hasActive = Object.keys(activeFilters).some(function (k) {
@@ -913,12 +914,9 @@
     if (heroImg) heroImg.style.viewTransitionName = "hero";
   }
 
-  document.addEventListener("click", function (e) {
-    var link = e.target.closest("a.photo-item");
-    // Bubble phase: a drag-ending click in Flow was already cancelled.
-    if (!link || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
-    setHero(link.querySelector(".photo-img"));
-  });
+  // (Clicks in the gallery open the photo overlay instead of a new page —
+  // see "Photo overlay" below — so only the return trip from a photo page
+  // visited directly still uses the cross-page transition.)
 
   // Back from a photo page (or closing it): the photo just viewed shrinks
   // back into its tile, when that tile is on screen.
@@ -2257,7 +2255,9 @@
       '<circle cx="34" cy="34" r="32.5" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.92)" stroke-width="1.5"></circle>' +
       "</svg>" +
       '<svg class="photo-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">' +
-      '<path d="M12 5v14M5 12h14"></path>' +
+      '<path class="pc-plus" d="M5 12h14M12 5v14"></path>' +
+      // "×" — the photo page's full screen, where a click leaves it.
+      '<path class="pc-x" d="M8 8l8 8M16 8l-8 8"></path>' +
       "</svg>";
 
     document.body.appendChild(cursor);
@@ -2278,6 +2278,20 @@
         frame = requestAnimationFrame(render);
       }
     }
+
+    // The photo page's viewer (viewer.js) drives the same cursor over its
+    // big photo: "+" on the photo itself, "×" anywhere in full screen
+    // (where a click leaves full screen).
+    window.owwCursor = {
+      at: function (x, y) {
+        mouseX = x;
+        mouseY = y;
+        queueRender();
+      },
+      show: function () { cursor.classList.add("is-visible"); },
+      hide: function () { cursor.classList.remove("is-visible"); },
+      close: function (on) { cursor.classList.toggle("is-close", !!on); },
+    };
 
     function show(photo) {
       if (activePhoto && activePhoto !== photo) {
@@ -3268,7 +3282,7 @@
     field.addEventListener("pointerleave", function () { setOn(null); });
 
     function tick() {
-      if (isShown()) {
+      if (isShown() && !paused) {
         if (!drag && (Math.abs(vx) > 0.05 || Math.abs(vy) > 0.05)) {
           cx += vx;
           cy += vy;
@@ -3314,8 +3328,300 @@
     restoreFlowScroll = function () { dirty = true; };
     saveFlowCamera = saveCamera;
 
+    // Paused while the photo overlay is open: no idle drift, so the tile is
+    // still in place when the photo shrinks back into it.
+    var paused = false;
+    flowSetPaused = function (v) {
+      paused = !!v;
+      lastInput = performance.now();
+      drift = 0;
+      dirty = true;
+    };
+
     rebuild(false);
     requestAnimationFrame(tick);
+  })();
+
+  /* ── Photo overlay — open a photo without leaving the gallery ─────── */
+
+  /*
+   * Clicking a photo in Flow or Grid opens the photo page in a full-screen
+   * frame over the gallery (/photo/<slug>?embed=1) instead of loading it as a
+   * new page, so nothing is thrown away. A copy of the tile's image flies to
+   * where the big photo will be while the background fades in; once the
+   * viewer has its photo on screen it takes over. The address bar shows
+   * /photo/<slug> (pushState), Back / × / Esc close it again — shrinking the
+   * photo back into its tile when that's on screen — and following the strip
+   * updates the address. Visiting /photo/<slug> directly is unchanged.
+   */
+  (function () {
+    if (!document.getElementById("flowView")) return;
+
+    var EASE = "cubic-bezier(.2, .8, .2, 1)";
+    var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var DUR = reduce ? 0 : 450;
+
+    var overlay = null, backdrop = null, frame = null;
+    var openSlug = null, lastRect = null, lastSrc = "", clone = null, hiddenImg = null;
+    var state = { ready: false, flown: false, shown: false };
+    var safety = 0;
+    var galleryTitle = document.title;
+
+    function ensureOverlay() {
+      if (overlay) return;
+      overlay = document.createElement("div");
+      overlay.id = "photoOverlay";
+      overlay.hidden = true;
+      overlay.innerHTML = '<div class="po-backdrop"></div><iframe class="po-frame" title="Photo" allow="fullscreen"></iframe>';
+      document.body.appendChild(overlay);
+      backdrop = overlay.firstChild;
+      frame = overlay.lastChild;
+    }
+
+    function isOpen() { return overlay && !overlay.hidden; }
+
+    // Navigating the frame with location.replace adds no history entry, so
+    // Back (and × / Esc, which use it) close the overlay instead of stepping
+    // the frame back.
+    function setFrame(url) {
+      try { frame.contentWindow.location.replace(url); }
+      catch (e) { frame.src = url; }
+    }
+
+    function slugOf(href) {
+      var m = String(href || "").match(/\/photo\/([^/?#]+)/);
+      return m ? decodeURIComponent(m[1]) : null;
+    }
+
+    // The gallery tile for a photo, if it's on screen.
+    function tileFor(slug) {
+      var found = null;
+      document.querySelectorAll('a.photo-item[href^="/photo/' + encodeURIComponent(slug) + '"]').forEach(function (a) {
+        if (found || !a.closest("#flowView, #gridView")) return;
+        var img = a.querySelector(".photo-img");
+        var r = img && img.getBoundingClientRect();
+        if (r && r.width && r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth) found = img;
+      });
+      return found;
+    }
+
+    // Where the viewer will show a photo of this shape (its stage, as in
+    // detail.ejs, with the photo fitted inside).
+    function stageRect(aspect) {
+      var vw = window.innerWidth, vh = window.innerHeight;
+      var b = vw < 768 ? { l: 16, t: 16, r: vw - 16, b: vh - 178 } : { l: 170, t: 64, r: vw - 170, b: vh - 64 };
+      var W = b.r - b.l, H = b.b - b.t, w, h;
+      if (W / H > aspect) { h = H; w = H * aspect; } else { w = W; h = W / aspect; }
+      return { left: b.l + (W - w) / 2, top: b.t + (H - h) / 2, width: w, height: h };
+    }
+
+    function box(r) {
+      return { left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" };
+    }
+
+    function removeClone() {
+      if (clone) { clone.remove(); clone = null; }
+      if (hiddenImg) { hiddenImg.style.visibility = ""; hiddenImg = null; }
+    }
+
+    /*
+     * A copy of the photo flying between its tile and the viewer. It's placed
+     * once at the full-photo box (the photo's own shape) and only transformed
+     * and clipped from there — scaled down and moved onto the tile, cropped
+     * to the tile's shape (tiles may crop the photo). transform / clip-path
+     * don't re-lay out the page each frame, so the move stays smooth even
+     * with a full Flow wall behind it. `dir` "in" goes tile → viewer, "out"
+     * goes viewer → tile.
+     */
+    function fly(img, photoBox, tileBox, dir, done, src) {
+      removeClone();
+      clone = document.createElement("img");
+      clone.className = "po-clone";
+      clone.alt = "";
+      clone.decoding = "sync";
+      clone.src = src || img.currentSrc || img.src;
+      clone.dataset.dir = dir;
+      Object.assign(clone.style, box(photoBox));
+
+      var s = Math.max(tileBox.width / photoBox.width, tileBox.height / photoBox.height);
+      var dx = tileBox.left + tileBox.width / 2 - (photoBox.left + photoBox.width / 2);
+      var dy = tileBox.top + tileBox.height / 2 - (photoBox.top + photoBox.height / 2);
+      var ix = Math.max(0, (photoBox.width - tileBox.width / s) / 2);
+      var iy = Math.max(0, (photoBox.height - tileBox.height / s) / 2);
+      var onTile = { transform: "translate(" + dx + "px, " + dy + "px) scale(" + s + ")", clipPath: "inset(" + iy + "px " + ix + "px)" };
+      var onPhoto = { transform: "translate(0px, 0px) scale(1)", clipPath: "inset(0px 0px)" };
+      var frames = dir === "in" ? [onTile, onPhoto] : [onPhoto, onTile];
+
+      // First frame in place before it's shown, so there's no jump.
+      Object.assign(clone.style, frames[0]);
+      document.body.appendChild(clone);
+      hiddenImg = img;
+      img.style.visibility = "hidden";
+
+      var called = false;
+      var finish = function () { if (!called) { called = true; done(); } };
+      if (!DUR) { Object.assign(clone.style, frames[1]); finish(); return; }
+
+      var start = function () {
+        if (!clone) return;
+        var a = clone.animate(frames, { duration: DUR, easing: EASE, fill: "forwards" });
+        a.onfinish = finish;
+        setTimeout(finish, DUR + 300);
+      };
+      // Decode the copy first so the first frames don't stall (but don't wait long).
+      var waited = false;
+      var go = function () { if (!waited) { waited = true; start(); } };
+      if (clone.decode) clone.decode().then(go, go);
+      setTimeout(go, 120);
+    }
+
+    function reveal() {
+      if (state.shown || !state.ready || !state.flown) return;
+      state.shown = true;
+      clearTimeout(safety);
+      frame.style.opacity = "1";
+      // The viewer fades in over the copy (.po-frame transition); drop the
+      // copy only once it's fully covered, so the photo never blinks.
+      setTimeout(removeClone, reduce ? 0 : 300);
+      try { frame.focus(); } catch (e) {}
+    }
+
+    function open(link, fromHistory) {
+      ensureOverlay();
+      var href = link.getAttribute("href");
+      var slug = slugOf(href);
+      if (!slug) return;
+
+      openSlug = slug;
+      lastRect = null;
+      lastSrc = "";
+      state = { ready: false, flown: false, shown: false };
+
+      if (flowSetPaused) flowSetPaused(true);
+      document.documentElement.classList.add("po-open");
+      overlay.hidden = false;
+      frame.style.opacity = "0";
+      var frameUrl = href + (href.indexOf("?") === -1 ? "?" : "&") + "embed=1";
+
+      backdrop.getAnimations().forEach(function (a) { a.cancel(); });
+      backdrop.animate([{ opacity: 0 }, { opacity: 1 }], { duration: reduce ? 0 : DUR, easing: EASE, fill: "forwards" });
+
+      var img = link.querySelector(".photo-img");
+      var from = img && img.getBoundingClientRect();
+
+      // Fetch the exact image the viewer will show (same srcset and sizes as
+      // viewer.js) while the photo flies: the copy switches to it once ready
+      // (sharp on arrival), and the viewer finds it already downloaded.
+      if (img) {
+        var hi = new Image();
+        hi.decoding = "async";
+        var ss = img.getAttribute("srcset");
+        if (ss) { hi.sizes = "(max-width: 767px) 100vw, 75vw"; hi.srcset = ss; }
+        hi.src = img.getAttribute("src") || img.currentSrc;
+        var swap = function () {
+          if (clone && clone.dataset.dir === "in" && !state.shown) clone.src = hi.currentSrc || hi.src;
+        };
+        if (hi.decode) hi.decode().then(swap, function () {}); else hi.onload = swap;
+      }
+      // The viewer starts loading once the photo has landed: it runs on the
+      // same thread, so building it mid-flight would make the zoom stutter.
+      if (img && from && from.width) {
+        var aspect = img.naturalWidth ? img.naturalWidth / img.naturalHeight : from.width / from.height;
+        fly(img, stageRect(aspect), from, "in", function () {
+          state.flown = true;
+          setFrame(frameUrl);
+          reveal();
+        });
+      } else {
+        state.flown = true;
+        setFrame(frameUrl);
+      }
+
+      // Never leave the copy hanging if the viewer is slow to say it's ready.
+      clearTimeout(safety);
+      safety = setTimeout(function () { state.ready = state.flown = true; reveal(); }, 4000);
+
+      if (!fromHistory) history.pushState({ owwPhoto: slug }, "", href);
+    }
+
+    function finishClose() {
+      removeClone();
+      if (!overlay) return;
+      overlay.hidden = true;
+      frame.style.opacity = "0";
+      setFrame("about:blank");
+      backdrop.getAnimations().forEach(function (a) { a.cancel(); });
+      document.documentElement.classList.remove("po-open");
+      document.title = galleryTitle;
+      if (flowSetPaused) flowSetPaused(false);
+    }
+
+    function close() {
+      if (!isOpen()) return;
+      clearTimeout(safety);
+      frame.style.opacity = "0";
+      // Stop the viewer right away (its strip works every frame) so the
+      // shrink back has the thread to itself.
+      setFrame("about:blank");
+      backdrop.getAnimations().forEach(function (a) { a.cancel(); });
+      backdrop.animate([{ opacity: 1 }, { opacity: 0 }], { duration: reduce ? 0 : DUR, easing: EASE, fill: "forwards" });
+
+      var tile = openSlug && tileFor(openSlug);
+      if (tile && lastRect) {
+        fly(tile, lastRect, tile.getBoundingClientRect(), "out", finishClose, lastSrc);
+      } else {
+        setTimeout(finishClose, reduce ? 0 : DUR);
+      }
+    }
+
+    // Close via history when we added the entry, so Back and × agree.
+    function requestClose() {
+      if (history.state && history.state.owwPhoto) history.back();
+      else close();
+    }
+
+    document.addEventListener("click", function (e) {
+      var link = e.target.closest("a.photo-item");
+      // Bubble phase: a drag-ending click in Flow was already cancelled.
+      if (!link || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (!link.closest("#flowView, #gridView")) return;
+      e.preventDefault();
+      open(link, false);
+    });
+
+    window.addEventListener("message", function (e) {
+      if (e.origin !== location.origin || !frame || e.source !== frame.contentWindow) return;
+      var d = e.data || {};
+      if (d.rect) lastRect = d.rect;
+      if (d.src) lastSrc = d.src;
+      if (d.slug) openSlug = d.slug;
+
+      if (d.type === "oww-viewer-ready") {
+        state.ready = true;
+        reveal();
+      } else if (d.type === "oww-viewer-change") {
+        history.replaceState({ owwPhoto: d.slug }, "", d.url);
+        document.title = d.title;
+      } else if (d.type === "oww-viewer-close") {
+        requestClose();
+      }
+    });
+
+    window.addEventListener("popstate", function (e) {
+      var st = e.state;
+      if (isOpen() && !(st && st.owwPhoto)) {
+        close();
+      } else if (!isOpen() && st && st.owwPhoto) {
+        // Forward again: reopen the photo if its tile is around.
+        var a = document.querySelector('a.photo-item[href^="/photo/' + encodeURIComponent(st.owwPhoto) + '"]');
+        if (a) open(a, true);
+      }
+    });
+
+    // Esc while the gallery (not the viewer frame) has focus.
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && isOpen()) requestClose();
+    });
   })();
 
   /* ── Photo detail — Back to previous page ─────────────────────────── */

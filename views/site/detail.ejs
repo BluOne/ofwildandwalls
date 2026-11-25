@@ -2,7 +2,7 @@
     (left on desktop, bottom on phones) scrolls through the photos the visitor was
     browsing (filters carried over); Details slides a card in from the right.
     viewer.js runs it and keeps the URL on the photo shown. %>
-<%- include('partials/head', { title: title }) %>
+<%- include('partials/head', { title: title, noTailwind: true }) %>
 
 <style>
   :root { --v-paper: #ffffff; --v-ink: #141414; --v-ink-75: rgba(20,20,20,.75); --v-ink-55: rgba(20,20,20,.55);
@@ -14,6 +14,8 @@
           --v-pill: #1b1b1b; --v-ctl: #2a2a2a; --v-ctl-hover: #333333; --v-shadow: 0 6px 28px rgba(0,0,0,.6);
           --v-ctl-shadow: 0 4px 18px rgba(0,0,0,.35); }
   html, body { height: 100%; overflow: hidden; }
+  /* (No Tailwind on this page: set the page font and background here.) */
+  body { margin: 0; font-family: "Inter", system-ui, sans-serif; background: var(--v-paper); color: var(--v-ink); }
   #viewer { position: fixed; inset: 0; background: var(--v-paper); color: var(--v-ink); overflow: hidden;
             animation: vIn .3s ease-out; }
   @keyframes vIn { from { opacity: 0; } to { opacity: 1; } }
@@ -30,6 +32,8 @@
                 -webkit-user-drag: none; user-select: none; visibility: hidden; }
   .vstage img.on { visibility: visible; cursor: zoom-in; }
   #viewer.full .vstage img.on { cursor: zoom-out; }
+  /* Over the photo the gallery's round "+" cursor replaces the pointer (viewer.js). */
+  #viewer.pc-on .vstage, #viewer.pc-on .vstage img { cursor: none !important; }
 
   /* thumbnail strip: the thumb nearest the centre line is the photo shown; nearby thumbs ease outward */
   .vrail { position: absolute; z-index: 2; left: 0; top: 0; bottom: 0; width: 160px; overflow-y: auto; overflow-x: hidden;
@@ -134,6 +138,8 @@
     #viewer.det .vpanel { transform: none; }
   }
   @media (prefers-reduced-motion: reduce) { #viewer { animation: none; } }
+  /* In the gallery's frame (?embed=1) the gallery already fades the backdrop in. */
+  .v-embed #viewer { animation: none; }
 </style>
 
 <%
