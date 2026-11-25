@@ -175,7 +175,50 @@
           btn.setAttribute("aria-pressed", isActive ? "true" : "false");
         }
       });
+
+      placeThumbs(false);
     }
+
+    // The sliding pill behind each Flow/Grid toggle (header, and the phone
+    // bottom bar): one element per toggle, moved to the active button so the
+    // switch slides instead of the colour jumping between buttons.
+    function placeThumb(seg, instant) {
+      var thumb = seg.querySelector(".hdr-thumb");
+
+      if (!thumb) {
+        thumb = document.createElement("span");
+        thumb.className = "hdr-thumb";
+        thumb.setAttribute("aria-hidden", "true");
+        seg.insertBefore(thumb, seg.firstChild);
+        seg.classList.add("has-thumb");
+        instant = true;
+      }
+
+      var btn = seg.querySelector(".hdr-seg-btn.is-active");
+      // A toggle that isn't showing (e.g. the phone bar on desktop) is placed
+      // when it next appears (resize).
+      if (!btn || !btn.offsetWidth) return;
+
+      if (instant) thumb.style.transition = "none";
+      thumb.style.width = btn.offsetWidth + "px";
+      thumb.style.height = btn.offsetHeight + "px";
+      thumb.style.top = btn.offsetTop + "px";
+      thumb.style.transform = "translateX(" + btn.offsetLeft + "px)";
+      if (instant) {
+        void thumb.offsetWidth; // apply the jump before turning the slide back on
+        thumb.style.transition = "";
+      }
+    }
+
+    function placeThumbs(instant) {
+      document.querySelectorAll(".hdr-seg").forEach(function (seg) { placeThumb(seg, instant); });
+    }
+
+    // Button sizes change with the screen size and once the web font loads.
+    placeThumbs(true);
+    window.addEventListener("resize", function () { placeThumbs(true); });
+    window.addEventListener("load", function () { placeThumbs(true); });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { placeThumbs(true); });
 
     function currentView() {
       return gridSection.classList.contains("hidden") ? "flow" : "grid";
@@ -338,7 +381,7 @@
 
   function brandHeader(label) {
     return (
-      '<p class="px-4 pt-2 pb-1 text-[11px] tracking-[0.06em] uppercase text-ink/40 dark:text-white/40">' +
+      '<p class="px-4 pt-2 pb-1 text-[10.5px] tracking-[0.06em] uppercase text-ink/40 dark:text-white/40">' +
       esc(label) +
       "</p>"
     );
@@ -432,6 +475,7 @@
   /* ── Photo filtering ─────────────────────────────────────────────── */
 
   var activeFilters = {
+    search: null, // free text, matched against each photo's searchable text
     category: null,
     collection: null,
     camera: null,
@@ -474,6 +518,7 @@
   // count) or, for a filter restored from the URL on load, once that menu's
   // data has finished loading and we can look the count up.
   var activeFilterCounts = {
+    search: null,
     category: null,
     collection: null,
     camera: null,
@@ -512,6 +557,7 @@
   })();
 
   var dataAttrMap = {
+    search: "search",
     category: "category",
     collection: "collection",
     camera: "camera",
@@ -521,6 +567,7 @@
   };
 
   var defaultLabels = {
+    search: "Search",
     category: "Category",
     collection: "Collections",
     camera: "Camera",
@@ -590,6 +637,15 @@
       var val = activeFilters[type];
 
       if (!val || type === skipType) return;
+
+      if (type === "search") {
+        var text = String(get("search") || "");
+        var words = val.toLowerCase().split(/\s+/).filter(Boolean);
+        for (var w = 0; w < words.length; w++) {
+          if (text.indexOf(words[w]) === -1) { visible = false; return; }
+        }
+        return;
+      }
 
       if (type === "country") {
         var separatorIndex = val.indexOf("::");
@@ -736,7 +792,7 @@
 
     // Each active filter's pill shows how many photos are on screen for it.
     Object.keys(activeFilters).forEach(function (type) {
-      if (!activeFilters[type]) return;
+      if (!activeFilters[type] || type === "search") return;
 
       var counts = facetCounts(type);
       activeFilterCounts[type] = counts[lowerKey(activeFilters[type])] || 0;
@@ -842,7 +898,66 @@
     true,
   );
 
+  /*
+   * Photo zoom between pages (styles in head.ejs, @view-transition). The
+   * clicked photo is named "hero" so the browser morphs it into the photo
+   * page's big photo; coming back, the tile of the photo just viewed gets the
+   * name so it shrinks back into place. Only one element may carry the name,
+   * so it's cleared again afterwards.
+   */
+  var heroImg = null;
+
+  function setHero(img) {
+    if (heroImg && heroImg !== img) heroImg.style.viewTransitionName = "";
+    heroImg = img || null;
+    if (heroImg) heroImg.style.viewTransitionName = "hero";
+  }
+
+  document.addEventListener("click", function (e) {
+    var link = e.target.closest("a.photo-item");
+    // Bubble phase: a drag-ending click in Flow was already cancelled.
+    if (!link || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    setHero(link.querySelector(".photo-img"));
+  });
+
+  // Back from a photo page (or closing it): the photo just viewed shrinks
+  // back into its tile, when that tile is on screen.
+  window.addEventListener("pagereveal", function (e) {
+    setHero(null);
+    if (!e.viewTransition || !window.navigation || !navigation.activation || !navigation.activation.from) return;
+
+    var m = String(navigation.activation.from.url || "").match(/\/photo\/([^/?#]+)/);
+    if (!m) return;
+
+    var target = null;
+    document.querySelectorAll('a.photo-item[href^="/photo/' + m[1] + '"]').forEach(function (a) {
+      if (target) return;
+      var r = a.getBoundingClientRect();
+      var onScreen = r.width > 0 && r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth;
+      if (onScreen) target = a.querySelector(".photo-img");
+    });
+
+    if (!target) return;
+    setHero(target);
+    e.viewTransition.finished.finally(function () { setHero(null); });
+  });
+
+  // Restored from the back/forward cache without a transition: drop the name.
+  window.addEventListener("pageshow", function (e) {
+    if (e.persisted && !window.navigation) setHero(null);
+  });
+
   function updateButtonLabel(type) {
+    if (type === "search") {
+      var si = document.getElementById("searchInput");
+      var sc = null;
+      // Not while typing — except a cleared search (Reset) always empties it.
+      if (si && (!activeFilters.search || document.activeElement !== si)) {
+        si.value = activeFilters.search || "";
+        if (sc) sc.classList.toggle("hidden", !si.value);
+      }
+    }
+
     markActiveItems(
       document.getElementById(type === "collection" ? "collectionsMenu" : type + "Menu"),
       type,
@@ -1173,6 +1288,198 @@
       });
     },
   );
+
+  /* ── Search ──────────────────────────────────────────────────────── */
+
+  // Clicking Search turns the filter bar into a search field (#searchBar),
+  // with suggestion chips above it: the most-photographed species and places
+  // before typing, matching species / places / gear while typing. Typing
+  // narrows the photos to those containing every word (combined with the
+  // other filters); the search shows on the Search button ("Search  tiger"),
+  // goes in the URL and is cleared by Reset. Enter / Esc / a click outside
+  // closes the field and keeps the search; × clears it and closes.
+  (function () {
+    var bar = document.getElementById("filterBar");
+    var btn = document.getElementById("searchBtn");
+    var box = document.getElementById("searchBar");
+    var input = document.getElementById("searchInput");
+    var closeBtn = document.getElementById("searchClose");
+    var countEl = document.getElementById("searchCount");
+    var chipsEl = document.getElementById("searchChips");
+
+    if (!bar || !btn || !box || !input) return;
+
+    var timer = null;
+
+    function isOpen() {
+      return bar.classList.contains("oww-searching");
+    }
+
+    function open() {
+      // Close any open filter menu / phone panel first.
+      document.querySelectorAll(".oww-dropdown").forEach(function (d) { d.classList.add("hidden"); });
+      var group = document.getElementById("filtersGroup");
+      if (group && !window.matchMedia("(min-width: 768px)").matches) group.classList.add("hidden");
+
+      input.value = activeFilters.search || "";
+      bar.classList.add("oww-searching");
+      renderChips();
+      updateCount();
+      setTimeout(function () { input.focus(); }, 0);
+    }
+
+    function close() {
+      apply();
+      bar.classList.remove("oww-searching");
+      fitFilterBar();
+    }
+
+    // "10 photos": photos matching the search and any other filters.
+    function updateCount() {
+      if (!countEl) return;
+      var photos = getFacetPhotos();
+      if (!activeFilters.search || !photos) { countEl.classList.add("hidden"); return; }
+      var n = photos.filter(function (p) {
+        return photoMatchesFilters(function (name) { return p[name]; });
+      }).length;
+      countEl.textContent = n + (n === 1 ? " photo" : " photos");
+      countEl.classList.remove("hidden");
+    }
+
+    function apply() {
+      clearTimeout(timer);
+      var v = input.value.trim();
+      if ((activeFilters.search || "") === v) { updateCount(); return; }
+      activeFilters.search = v || null;
+      activeFilterCounts.search = null;
+      updateButtonLabel("search");
+      updateResetButton();
+      applyFiltersAfterLoading();
+      updateURLQuery();
+      updateCount();
+    }
+
+    /* suggestion chips */
+
+    var ICONS = {
+      species: '<circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>',
+      place: '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z"></path><circle cx="12" cy="10" r="2.3"></circle>',
+      gear: '<path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.2-2h6.6l1.2 2h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-9Z"></path><circle cx="12" cy="13" r="3.2"></circle>',
+    };
+    var index = null;
+
+    // Every species (photo caption), place (city, else state; plus states and
+    // countries) and piece of gear, with how many photos have it.
+    function buildIndex() {
+      var byKey = {};
+      var list = [];
+      // `pick`: may appear among the chips shown before typing (species and
+      // actual places — not the state/country totals, which would crowd out
+      // places like Kanha or Ranthambore).
+      function add(label, kind, pick) {
+        label = String(label || "").trim();
+        if (!label) return;
+        var k = kind + "|" + label.toLowerCase();
+        if (!byKey[k]) { byKey[k] = { label: label, kind: kind, n: 0, pick: false }; list.push(byKey[k]); }
+        byKey[k].n++;
+        if (pick) byKey[k].pick = true;
+      }
+      (getFacetPhotos() || []).forEach(function (p) {
+        add(p.t, "species", true);
+        add(p.city || p.state, "place", true);
+        if (p.city && p.state) add(p.state, "place", false);
+        add(p.country, "place", false);
+        add(p.camera, "gear", false);
+        add(p.lens, "gear", false);
+      });
+      return list;
+    }
+
+    // Before typing: the most-photographed species and places, alternating.
+    function popular() {
+      var byN = function (a, b) { return b.n - a.n; };
+      var species = index.filter(function (x) { return x.kind === "species" && x.pick; }).sort(byN);
+      var places = index.filter(function (x) { return x.kind === "place" && x.pick; }).sort(byN);
+      var out = [];
+      for (var i = 0; out.length < 10 && (i < species.length || i < places.length); i++) {
+        if (species[i]) out.push(species[i]);
+        if (places[i]) out.push(places[i]);
+      }
+      return out.slice(0, 10);
+    }
+
+    function renderChips() {
+      if (!chipsEl) return;
+      index = index || buildIndex();
+      var q = input.value.trim().toLowerCase();
+      var items;
+
+      if (!q) {
+        items = popular();
+      } else {
+        var starts = [], contains = [];
+        index.forEach(function (x) {
+          var l = x.label.toLowerCase();
+          if (l === q) return;
+          if (l.indexOf(q) === 0) starts.push(x);
+          else if (l.indexOf(q) !== -1) contains.push(x);
+        });
+        var byN = function (a, b) { return b.n - a.n; };
+        items = starts.sort(byN).concat(contains.sort(byN)).slice(0, 10);
+      }
+
+      chipsEl.innerHTML = items.map(function (x) {
+        return '<button type="button" class="oww-chip shrink-0 flex items-center gap-2 h-10 px-4 rounded-full bg-paper dark:bg-nightpill' +
+          ' shadow-[0_4px_18px_rgba(0,0,0,0.12)] dark:shadow-[0_4px_18px_rgba(0,0,0,0.5)] text-[15px] whitespace-nowrap' +
+          ' text-ink/85 dark:text-white/85 hover:text-ink dark:hover:text-white transition-colors" data-value="' + escAttr(x.label) + '">' +
+          '<svg class="w-4 h-4 shrink-0 text-ink/45 dark:text-white/45" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"' +
+          ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[x.kind] + "</svg>" +
+          esc(x.label) + "</button>";
+      }).join("");
+      chipsEl.classList.toggle("invisible", items.length === 0);
+    }
+
+    /* events */
+
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      open();
+    });
+
+    input.addEventListener("input", function () {
+      clearTimeout(timer);
+      timer = setTimeout(apply, 150);
+      renderChips();
+    });
+
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); close(); }
+      else if (e.key === "Escape") { e.preventDefault(); close(); }
+    });
+
+    if (chipsEl) {
+      // mousedown keeps focus in the field; a chip searches for its value.
+      chipsEl.addEventListener("mousedown", function (e) {
+        var c = e.target.closest(".oww-chip");
+        if (!c) return;
+        e.preventDefault();
+        input.value = c.getAttribute("data-value");
+        apply();
+        renderChips();
+      });
+    }
+
+    if (closeBtn) {
+      closeBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        input.value = "";
+        close();
+      });
+    }
+
+    box.addEventListener("click", function (e) { e.stopPropagation(); });
+    document.addEventListener("click", function () { if (isOpen()) close(); });
+  })();
 
   /* ── Year ────────────────────────────────────────────────────────── */
 
@@ -2152,6 +2459,8 @@
 
       a.setAttribute("data-city", p.city || "");
 
+      a.setAttribute("data-search", p.search || "");
+
       a.setAttribute("data-year", p.year || "");
 
       var gridAspect = photoAspect(p);
@@ -2490,10 +2799,10 @@
       return { m: false, W: W, GX: Math.round(W * 0.3), GY: Math.round(W * 0.28), CAP: 26, C: 11 };
     }
 
-    function layout(list) {
+    function layout(list, maxCols) {
       var M = metrics();
       var W = M.W;
-      var C = Math.min(M.C, Math.max(1, list.length));
+      var C = Math.min(maxCols || M.C, Math.max(1, list.length));
       var cols = [];
       var i, k;
 
@@ -2504,9 +2813,11 @@
         var r = p.w && p.h ? p.w / p.h : 1.5;
         var h = W / r, w = W;
 
+        // Tall photos are capped at 4:5 but keep the full column width (the
+        // image crops to fill, object-fit: cover), so every tile in a column
+        // shares the same left edge and its caption lines up.
         if (h > W * 1.25) {
           h = W * 1.25;
-          w = h * r;
         }
 
         // Shortest column; on a tie, the one nearest the middle. Photos come
@@ -2529,6 +2840,17 @@
       var BH = Math.max.apply(null, cols.map(function (c) { return c.h; }));
       var shortest = Math.min.apply(null, cols.map(function (c) { return c.h; }));
       var endless = BW > window.innerWidth * 1.6 && shortest > window.innerHeight * 1.4;
+
+      // A small set (a filter or search with a few matches) that doesn't fill
+      // the screen must not be wider than it either — otherwise some matches
+      // sit off to the side (on phones and tablets) with nothing saying to
+      // swipe. Use only the columns that fit, centred, and stack the rest
+      // below (drag down to see them).
+      if (!endless && !maxCols) {
+        var pad = M.m ? 16 : 48;
+        var fit = Math.max(1, Math.floor((window.innerWidth - 2 * pad + M.GX) / (W + M.GX)));
+        if (fit < C) return layout(list, fit);
+      }
 
       cols.forEach(function (c, ci) {
         c.x = ci * (W + M.GX);
@@ -2776,8 +3098,18 @@
       }, 1200);
     }
 
+    // What the current layout was built for. Rebuilding throws every tile
+    // away and makes new ones (each photo fades / ripples in again), so it's
+    // only done when this changes — not on every switch back from Grid.
+    var builtFor = "";
+
+    function layoutKey() {
+      return buildFilterQueryString() + "|" + window.innerWidth + "|" + ALL.length;
+    }
+
     function rebuild(keepCam) {
       var list = filteredPhotos();
+      builtFor = layoutKey();
 
       if (emptyMsg) emptyMsg.hidden = list.length > 0;
       live.forEach(function (el) { el.remove(); });
@@ -2969,7 +3301,16 @@
     });
 
     // Filters and the Flow/Grid switch call these (see applyFilters, switchView).
-    flowRelayout = function () { rebuild(false); };
+    // Filters or the window changed: lay out again. Nothing changed (e.g.
+    // just switching back from Grid, or Grid loading another page): keep the
+    // tiles as they are and only redraw.
+    flowRelayout = function () {
+      if (L && layoutKey() === builtFor) {
+        dirty = true;
+        return;
+      }
+      rebuild(false);
+    };
     restoreFlowScroll = function () { dirty = true; };
     saveFlowCamera = saveCamera;
 

@@ -110,6 +110,23 @@ const placeOf = (row: any): string => {
   return String(m["Location"] || m["location"] || "").trim();
 };
 
+/**
+ * Everything the site's Search box looks through for one photo, as one
+ * lowercase string: titles, caption, category, collection, camera, lens,
+ * place and tags.
+ */
+const searchTextOf = (row: any): string => {
+  const meta = parseMeta(row.metadata);
+  return [
+    row.title, row.cap, row.ref, row.alt,
+    row.cat_name, row.cat_parent, row.col_name,
+    row.cam_brand, row.cam_model, row.len_brand, row.len_model,
+    meta["Camera"], meta["Lens"],
+    placeOf(row), row.country_state || row.state, row.country_name,
+    row.tags,
+  ].filter(Boolean).join(" ").toLowerCase().replace(/\s+/g, " ");
+};
+
 const parseMeta = (raw: any): Record<string, string> => {
   let arr: any[] = [];
   if (!raw) return {};
@@ -185,6 +202,8 @@ const mapToSitePhoto = (
     state: (row as any).country_state || row.state || "",
     // The picked city (countries.city), used by the Location filter.
     city: placeOf(row),
+    // Text the Search box matches against (see searchTextOf).
+    search: searchTextOf(row),
     // detail-panel fields
     about: row.description || "",
     altNote: row.alt_note || "",
@@ -311,7 +330,7 @@ const getGallery = async (req: Request, res: Response) => {
         slug: p.slug, t: p.cap || p.title, alt: p.alt,
         src: p.srcSmall || p.src, srcset: p.srcset, w: p.width, h: p.height, c: p.color,
         category: p.category, collection: p.collection, camera: p.camera, lens: p.lens,
-        country: p.country, state: p.state, city: p.city, year: p.year,
+        country: p.country, state: p.state, city: p.city, year: p.year, search: p.search,
       };
     });
 
@@ -348,7 +367,9 @@ const getPhotoDetail = async (req: Request, res: Response) => {
     const filterLens = String(req.query.lens || "").trim().toLowerCase();
     const filterCountry = String(req.query.country || "").trim().toLowerCase();
     const filterYear = String(req.query.year || "").trim().toLowerCase();
-    const hasFilters = !!(filterCategory || filterCollection || filterCamera || filterLens || filterCountry || filterYear);
+    const filterSearch = String(req.query.search || "").trim().toLowerCase();
+    const searchWords = filterSearch.split(/\s+/).filter(Boolean);
+    const hasFilters = !!(filterCategory || filterCollection || filterCamera || filterLens || filterCountry || filterYear || filterSearch);
 
     const [allPhotoRowsRaw] = await pool.query<any[]>(
       `${SELECT_SITE_PHOTOS} WHERE p.live = 1 ORDER BY p.id DESC`
@@ -378,6 +399,10 @@ const getPhotoDetail = async (req: Request, res: Response) => {
         }
       }
       if (filterYear && String(r.date || "").slice(0, 4) !== filterYear) return false;
+      if (searchWords.length) {
+        const text = searchTextOf(r);
+        if (!searchWords.every(w => text.includes(w))) return false;
+      }
       return true;
     };
 
@@ -395,6 +420,7 @@ const getPhotoDetail = async (req: Request, res: Response) => {
       filterLens ? `lens=${encodeURIComponent(req.query.lens as string)}` : "",
       filterCountry ? `country=${encodeURIComponent(req.query.country as string)}` : "",
       filterYear ? `year=${encodeURIComponent(req.query.year as string)}` : "",
+      filterSearch ? `search=${encodeURIComponent(req.query.search as string)}` : "",
     ].filter(Boolean).join("&");
 
     const buildDetailsFromJoined = (r: any) => {

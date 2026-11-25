@@ -8,16 +8,16 @@
   <% if (typeof imageOrigin !== "undefined" && imageOrigin) { %><link rel="preconnect" href="<%= imageOrigin %>"><% } %>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500&family=Inter+Tight:wght@500&family=Playfair+Display:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Playfair+Display:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
       theme: { extend: {
         fontFamily: {
-          sans:  ['Archivo', 'system-ui', 'sans-serif'],
+          sans:  ['Inter', 'system-ui', 'sans-serif'],
           serif: ['"Playfair Display"', 'Georgia', 'serif'],
-          tight: ['"Inter Tight"', 'system-ui', 'sans-serif'],
+          tight: ['Inter', 'system-ui', 'sans-serif'],
         },
         colors: { paper: '#ffffff', ink: '#141414', night: '#0d0d0d', nightpill: '#1b1b1b' },
       } },
@@ -64,6 +64,24 @@
     #filterBar.oww-compact .oww-type { display: inline !important; }
     #filterBar.oww-compact #resetDivider { display: none !important; }
     #filterBar.oww-compact .oww-dropdown { bottom: calc(100% + 8px) !important; }
+
+    /* ── Opening a photo: the browser's cross-page view transition morphs the
+       clicked tile ("hero", named by app.js) into the photo page's big photo
+       (#vStage img.on), and the rest cross-fades; going back reverses it.
+       Browsers without support simply load the page as before. ── */
+    @view-transition { navigation: auto; }
+    #vStage img.on { view-transition-name: hero; }
+    ::view-transition-group(hero) { animation-duration: .45s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
+    /* keep each snapshot's own shape while it grows (no stretching) */
+    ::view-transition-old(hero), ::view-transition-new(hero) { width: 100%; height: 100%; object-fit: contain; }
+    ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .35s; }
+    @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+
+    /* ── Search mode: the filter bar (and the phone's theme/view controls) give
+       way to the search field + suggestion chips (#searchBar). ── */
+    #filterBar.oww-searching > *:not(#searchBar) { display: none !important; }
+    #filterBar.oww-searching #searchBar { display: flex; }
+    #searchInput:focus, #searchInput:focus-visible { outline: none; box-shadow: none; }
 
     /* ── Selected filter value in the bar ("Category  Echoes of Time"): long
        values end in "…". app.js narrows --oww-val-max when several filters
@@ -199,10 +217,21 @@
     /* The header's Instagram button is 42×42 at every size (more specific than
        the .hdr-chip size rules, so it wins on phone, tablet and desktop). */
     .site-header a.hdr-chip { width: 42px; height: 42px; }
-    .hdr-seg { display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 9999px; }
+    .hdr-seg { display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 9999px; position: relative; }
+    /* One pill behind the Flow/Grid buttons that slides to the active one
+       (app.js sizes and moves it); the buttons themselves stay see-through. */
+    .hdr-seg .hdr-thumb {
+      position: absolute; left: 0; top: 0; border-radius: 9999px; pointer-events: none;
+      background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      transition: transform .42s cubic-bezier(.65,0,.25,1), width .42s cubic-bezier(.65,0,.25,1);
+    }
+    .dark .hdr-seg .hdr-thumb { background: #0b0b0b; box-shadow: none; }
+    @media (prefers-reduced-motion: reduce) { .hdr-seg .hdr-thumb { transition: none; } }
+    .hdr-seg-btn { position: relative; z-index: 1; }
+    .hdr-seg.has-thumb .hdr-seg-btn.is-active { background: transparent !important; box-shadow: none !important; }
     .hdr-seg-btn {
       height: 40px; padding: 0 18px; border-radius: 9999px;
-      font-size: 16px; line-height: 40px; color: rgba(20,20,20,.6);
+      font-size: 15px; line-height: 40px; color: rgba(20,20,20,.6);
       transition: color .2s, background-color .2s, box-shadow .2s;
     }
     .hdr-seg-btn:hover { color: #141414; }
@@ -219,7 +248,7 @@
       .site-header .hdr-chip { width: 34px; height: 34px; }
       .site-header .hdr-chip svg { width: 17px; height: 17px; }
       .site-header .hdr-seg { padding: 3px; }
-      .site-header .hdr-seg-btn { height: 28px; line-height: 28px; padding: 0 13px; font-size: 14px; }
+      .site-header .hdr-seg-btn { height: 28px; line-height: 28px; padding: 0 13px; font-size: 13px; }
       #filterBar:not(.oww-compact) #filtersGroup button[id$="Btn"] {
         padding: 7px 15px;
       }
@@ -248,7 +277,7 @@
     .flow-ph { position: relative; display: block; background: var(--flow-ph); }
     .flow-ph img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
                    display: block; -webkit-user-drag: none; }
-    .flow-cap { display: block; margin-top: 10px; font-family: "Inter Tight", system-ui, sans-serif;
+    .flow-cap { display: block; margin-top: 10px; font-family: "Inter", system-ui, sans-serif;
                 font-size: 11px; font-weight: 500; line-height: 1.25; letter-spacing: -.005em;
                 color: var(--flow-cap); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
                 transition: color .2s; }
@@ -262,8 +291,8 @@
     .flow-cn.d { right: -4px; top: calc(var(--phh) - 16px); border-right-width: 2px; border-bottom-width: 2px; translate: -3px -3px; }
     .flow-tile.is-on .flow-cn, .flow-tile:focus-visible .flow-cn { opacity: 1; translate: 0 0; }
     .flow-tile:focus-visible { outline: none; }
-    .flow-hint { position: fixed; z-index: 20; left: 24px; bottom: 30px; margin: 0; padding: 6px 10px;
-                 border-radius: 99px; font-family: "Inter Tight", system-ui, sans-serif; font-size: 11px;
+    .flow-hint { position: fixed; z-index: 20; left: 24px; bottom: 96px; /* above the filter bar */ margin: 0; padding: 6px 10px;
+                 border-radius: 99px; font-family: "Inter", system-ui, sans-serif; font-size: 11px;
                  color: var(--flow-cap); background: var(--flow-chip); backdrop-filter: blur(6px);
                  pointer-events: none; transition: opacity .6s; }
     .flow-hint.is-gone { opacity: 0; }

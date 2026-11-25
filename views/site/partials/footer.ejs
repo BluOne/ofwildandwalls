@@ -28,6 +28,15 @@
            md:flex md:flex-row md:items-center md:gap-1 md:static md:translate-x-0 md:w-auto md:max-w-none md:p-2 md:rounded-[26px]
            bg-paper dark:bg-nightpill shadow-[0_6px_28px_rgba(0,0,0,0.13)] dark:shadow-[0_6px_28px_rgba(0,0,0,0.6)]">
 
+        <%# ── Search: clicking it turns the bar into a search field (see #searchBar) ── %>
+        <div class="relative mb-1 md:mb-0">
+          <button type="button" id="searchBtn" data-filter="search" class="w-full md:w-auto flex items-center gap-2.5 px-4 py-2 md:py-2.5 rounded-[18px] text-[15px] md:text-[16px] whitespace-nowrap text-ink/85 dark:text-white/85 hover:bg-black/[0.04] dark:hover:bg-white/[0.07] transition-colors">
+            <svg class="w-4 h-4 md:w-[18px] md:h-[18px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><span>Search</span>
+          </button>
+        </div>
+        <%# Divider between Search and the filters (one-row bar only). %>
+        <span class="hidden md:block self-center w-px h-6 mx-1 bg-ink/15 dark:bg-white/15" aria-hidden="true"></span>
+
         <%# ── Category dropdown ──────────────────────────────────────── %>
         <div class="relative mb-1 md:mb-0">
           <div id="categoryMenu" class="absolute bottom-[calc(100%+8px)] md:bottom-[calc(100%+24px)] left-1/2 -translate-x-1/2 w-[min(218px,88vw)] max-h-[min(260px,calc(100dvh-440px))] md:max-h-[260px] overflow-y-auto py-2 rounded-[14px] bg-[#f1f0ef] dark:bg-[#262626] shadow-[0_8px_30px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.6)] hidden" aria-label="Category filter menu">
@@ -96,6 +105,21 @@
           </button>
         </div>
 
+      </div>
+    </div>
+    <%# ── Search mode: replaces the filter bar while open. Suggestion chips above
+           (popular species and places, then matches as you type), the field below
+           with a result count and ×. Wired up in app.js (Search). ── %>
+    <div id="searchBar" class="hidden flex-col items-center gap-2.5 w-full max-w-[840px]" role="search">
+      <div id="searchChips" class="no-bar flex max-w-full gap-2 overflow-x-auto px-1 pb-0.5" aria-label="Suggestions"></div>
+      <div class="flex w-full items-center gap-3 rounded-[26px] bg-paper dark:bg-nightpill px-5 h-[54px] shadow-[0_6px_28px_rgba(0,0,0,0.13)] dark:shadow-[0_6px_28px_rgba(0,0,0,0.6)]">
+        <svg class="w-[18px] h-[18px] shrink-0 text-ink/55 dark:text-white/55" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+        <input id="searchInput" type="text" enterkeyhint="search" autocomplete="off" spellcheck="false" placeholder="Search species, places…" aria-label="Search photos"
+          class="min-w-0 flex-1 bg-transparent text-[16px] text-ink dark:text-white placeholder:text-ink/40 dark:placeholder:text-white/40 outline-none">
+        <span id="searchCount" class="hidden shrink-0 text-[13px] text-ink/40 dark:text-white/40 whitespace-nowrap" aria-live="polite"></span>
+        <button type="button" id="searchClose" aria-label="Clear and close search" class="shrink-0 w-8 h-8 -mr-1.5 rounded-full grid place-items-center text-ink/60 dark:text-white/60 hover:text-ink dark:hover:text-white hover:bg-black/[0.05] dark:hover:bg-white/[0.08]">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
       </div>
     </div>
   </nav>

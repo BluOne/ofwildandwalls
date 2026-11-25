@@ -55,6 +55,23 @@
   .vdet:hover { background: var(--v-ctl-hover) !important; }
   .vdet[aria-pressed="true"] { background: var(--v-ink) !important; color: var(--v-paper) !important; }
 
+  /* Same look as the Flow page's header buttons (.hdr-chip / .hdr-seg in
+     head.ejs): frosted chips, 34px round buttons with 17px icons, and the
+     Details pill like a Flow/Grid button — white when on (near-black in dark). */
+  /* (#viewer prefix: outranks "#viewer button { font: inherit; color: inherit }") */
+  #viewer .vcirc, #viewer .vdet {
+    background: rgba(238,238,238,.88) !important; box-shadow: none;
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+    color: rgba(20,20,20,.8);
+  }
+  #viewer .vcirc:hover, #viewer .vdet:hover { background: rgba(228,228,228,.95) !important; color: #141414; }
+  .dark #viewer .vcirc, .dark #viewer .vdet { background: rgba(38,38,38,.82) !important; color: rgba(255,255,255,.8); }
+  .dark #viewer .vcirc:hover, .dark #viewer .vdet:hover { background: rgba(52,52,52,.92) !important; color: #fff; }
+  .vcirc svg { width: 17px; height: 17px; }
+  #viewer .vdet { height: 34px; padding: 0 14px 0 11px !important; font-size: 13px; gap: 6px; }
+  #viewer .vdet[aria-pressed="true"] { background: #fff !important; color: #141414 !important; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .dark #viewer .vdet[aria-pressed="true"] { background: #0b0b0b !important; color: #fff !important; box-shadow: none; }
+
   /* details: floating card on desktop, bottom sheet on phones */
   .vpanel { position: absolute; z-index: 3; top: 64px; right: 20px; max-height: calc(100% - 128px); width: 360px;
             box-sizing: border-box; background: var(--v-pill); border-radius: 24px; box-shadow: var(--v-shadow);
@@ -66,7 +83,7 @@
   .vpanel h2 { font-family: "Playfair Display", Georgia, serif; font-weight: 500; font-size: 28px; line-height: 1.1;
                margin: 0; letter-spacing: -.005em; text-wrap: balance; }
   .vref { font-size: 14px; color: var(--v-ink-55); margin-top: 8px; line-height: 1.4; }
-  .vref i { font-family: "Playfair Display", Georgia, serif; font-style: italic; }
+  .vref i { font-family: "Playfair Display", Georgia, serif; font-style: italic; font-weight: 500; }
   .vabout { margin: 22px 0 0; font-size: 14.5px; line-height: 1.65; color: var(--v-ink-75); }
   .vrows { margin: 26px 0 0; border-top: 1px solid var(--v-ink-15); }
   .vrow { display: grid; grid-template-columns: 18px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--v-ink-15); align-items: start; }
@@ -75,7 +92,7 @@
   .vrow dt svg { width: 18px; height: 18px; }
   .vrow dd { margin: 0; font-size: 14px; line-height: 1.45; min-width: 0; }
   .vchips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .vchips span { padding: 4px 10px; border-radius: 999px; background: var(--v-hover); font-family: "Inter Tight", system-ui, sans-serif;
+  .vchips span { padding: 4px 10px; border-radius: 999px; background: var(--v-hover); font-family: "Inter", system-ui, sans-serif;
                  font-size: 12.5px; font-variant-numeric: tabular-nums; }
 
   /* full screen: click the photo; everything else steps away */
@@ -89,9 +106,10 @@
 
   @media (max-width: 767px) {
     .vtop { top: auto; left: 50%; right: auto; translate: -50% 0; bottom: 16px; gap: 10px; }
-    .vcirc { width: 44px; height: 44px; }
+    /* phones: the same 48px controls as the Flow page's bottom bar */
+    .vcirc { width: 48px; height: 48px; }
     .vcirc svg { width: 20px; height: 20px; }
-    .vdet { height: 44px; padding: 0 22px 0 18px !important; font-size: 15px; gap: 8px; }
+    #viewer .vdet { height: 48px; padding: 0 20px 0 16px !important; font-size: 16px; gap: 8px; }
     .vdet svg { width: 19px; height: 19px; }
     .vstage { left: 16px; right: 16px; top: 16px; bottom: 178px; }
     #viewer.det .vstage { right: 16px; bottom: calc(62vh + 12px); }
