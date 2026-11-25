@@ -2255,9 +2255,9 @@
       '<circle cx="34" cy="34" r="32.5" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.92)" stroke-width="1.5"></circle>' +
       "</svg>" +
       '<svg class="photo-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">' +
-      '<path class="pc-plus" d="M5 12h14M12 5v14"></path>' +
-      // "×" — the photo page's full screen, where a click leaves it.
-      '<path class="pc-x" d="M8 8l8 8M16 8l-8 8"></path>' +
+      // One "+"; turned 45° it's the "×" of the photo page's full screen
+      // (where a click leaves it), so it rotates smoothly between the two.
+      '<path d="M5 12h14M12 5v14"></path>' +
       "</svg>";
 
     document.body.appendChild(cursor);

@@ -346,9 +346,9 @@
       color: #fff;
     }
     .photo-plus-cursor.is-visible { opacity: 1; }
-    .photo-plus-cursor .pc-x { display: none; }
-    .photo-plus-cursor.is-close .pc-plus { display: none; }
-    .photo-plus-cursor.is-close .pc-x { display: inline; }
+    .photo-plus-cursor .photo-plus-icon { transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
+    .photo-plus-cursor.is-close .photo-plus-icon { transform: rotate(45deg) scale(.82); }
+    @media (prefers-reduced-motion: reduce) { .photo-plus-cursor .photo-plus-icon { transition: none; } }
 
     /* Grid's horizontal strip: swiping past its first or last photo on a
        touchpad made Chrome show its back/forward arrow and navigate
